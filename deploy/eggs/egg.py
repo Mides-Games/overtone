@@ -26,7 +26,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 AUTHOR = "dev@midesprojects.com"
-REPO = "https://github.com/Mides-Games/overtone.git"
+REPO = "https://github.com/Mides-Games/overtone-engine.git"
 INSTALLER = "ghcr.io/pterodactyl/installers:debian"
 
 # Debian images, not the panel's own Alpine ones: numpy, numba, scipy and

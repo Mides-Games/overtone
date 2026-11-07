@@ -260,7 +260,7 @@ Keep the folder together: overtone.exe reads _internal and assets beside it.
 The first run of a session compiles some kernels and takes longer.
 
 Licence: MIT (LICENSE). The model's licence: assets\\models\\LICENSE-beat-this.txt.
-Source: https://github.com/Mides-Games/overtone
+Source: https://github.com/Mides-Games/overtone-engine
 """
 
 
