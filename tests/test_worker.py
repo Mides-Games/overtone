@@ -182,6 +182,11 @@ class ResultOnAudioTests(unittest.TestCase):
             self.assertGreater(section["onsets"], 10)
         self.assertEqual(result["swing"]["spans"], [])
         self.assertEqual(result["pulse_hints"], [])
+        # The engine's own verdict, an optional field beside the timing (roadmap 29.5).
+        check = result["self_check"]
+        self.assertIn(check["verdict"], ("sure", "look"))
+        self.assertFalse(check["calibrated"])
+        self.assertEqual(len(check["sections"]), len(result["sections"]))
         # Well inside the budget the page is built for (300 kB for six minutes).
         self.assertLess(len(json.dumps(result, separators=(",", ":"))), 40_000)
 
@@ -675,8 +680,14 @@ class ResultPartsTests(unittest.TestCase):
                   "beats": {"t_ms": [10, 20], "bpm": [120, 120]}, "onsets": {"t_ms": [11], "w": [100]},
                   "downbeats_ms": [10], "onset_envelope": {"span_ms": 40, "v": [1]},
                   "swing": {"measured": 0, "swung": 0, "spans": [{"start_ms": 10, "end_ms": 20}]},
-                  "pulse_hints": [{"from_ms": 10, "to_ms": 20, "boundary_ms": 15}]}
+                  "pulse_hints": [{"from_ms": 10, "to_ms": 20, "boundary_ms": 15}],
+                  "self_check": {"verdict": "look", "look": {"index": 0, "start_s": 0.01, "end_s": 0.05,
+                                                             "reason": "drift"},
+                                 "sections": [{"index": 0, "start_s": 0.01, "end_s": 0.05}]}}
         moved = tr.shift_result(result, 1000.5)
+        self.assertEqual((moved["self_check"]["look"]["start_s"], moved["self_check"]["look"]["end_s"]),
+                         (1.0105, 1.0505))
+        self.assertEqual(moved["self_check"]["sections"][0]["start_s"], 1.0105)
         self.assertEqual(moved["offset_ms"], 1010.5)
         self.assertEqual(moved["red_lines"][0]["time_ms"], 1010.5)
         self.assertEqual(moved["sections"][0], {"start_ms": 1010.5, "end_ms": 1050.5})
@@ -783,7 +794,7 @@ class TwoEnginesOneSchemaTests(unittest.TestCase):
         # for the v1.1 evidence the result page draws. v1.0 is what both share.
         self.assertNotIn("minor", v4)
         for key in ("minor", "beats", "downbeats_ms", "onsets", "onset_envelope", "swing", "pulse_hints",
-                    "mode", "options", "hint_checks", "stretch"):
+                    "mode", "options", "hint_checks", "stretch", "self_check"):
             v3.pop(key)
         for section in v3["sections"]:
             for key in ("drift_ms", "drift_p90_ms", "drift_bias_ms", "onsets"):

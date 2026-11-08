@@ -83,6 +83,19 @@ def shift_result(result: dict, shift: float) -> dict:
     if "pulse_hints" in result:
         out["pulse_hints"] = [{**h, **{k: _shift_ms(h[k], shift, True) for k in ("from_ms", "to_ms", "boundary_ms")}}
                               for h in result["pulse_hints"]]
+    if isinstance(result.get("self_check"), dict):
+        check = result["self_check"]
+
+        def later_s(value):
+            return None if value is None else round(float(value) + shift / 1000.0, 4)
+
+        look = check.get("look")
+        out["self_check"] = {
+            **check,
+            "look": ({**look, "start_s": later_s(look.get("start_s")), "end_s": later_s(look.get("end_s"))}
+                     if isinstance(look, dict) else look),
+            "sections": [{**s, "start_s": later_s(s.get("start_s")), "end_s": later_s(s.get("end_s"))}
+                         for s in check.get("sections", [])]}
     return out
 
 

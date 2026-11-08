@@ -20,6 +20,44 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · The engine says when it is sure (uncalibrated)
+
+### Changed
+
+- Roadmap 29.5: `overtone.self_check(analysis)` gives a verdict without a map,
+  `"sure"` or `"look"` (with the first red line to look at, its start and end
+  in seconds and the reason). Per red line it reads the strong attacks (the top
+  half by weight) against the line's grid: the 95th percentile of their
+  distance to the nearest beat, the weight on neither a beat nor a half beat,
+  the weight on half beats over beats (a grid half a beat out), the octave
+  margin `analysis_evidence` already reports, and the distance's linear trend
+  across the line (a BPM a few thousandths out). Read only: no red line moves,
+  and every gate reading is unchanged.
+- The worker's result carries it as an optional top-level `self_check` field
+  (nothing renamed; a stretch's times are moved with the rest).
+- **Uncalibrated.** The thresholds (`params.SELF_CHECK_*`) were chosen on the
+  synthetic fixtures alone and every verdict says `calibrated: false`. They are
+  to be measured with `bench/replay.py` against ranked maps: the aim is at least
+  95 % of the songs called "sure" rankable (every beat within 10 ms).
+
+### Measured
+
+- The 28 rendered benchmark fixtures: 20 of the 24 corpus tracks "sure"; "look" for the three refusals,
+  `_ramp` (the fallback tracker), `heavy-jitter-168` (95th percentile 14.5 ms),
+  `very-noisy-132` (50 ms, and the octave), and `change-175-87.5` and `slow-92`
+  (an octave neighbour coheres more than the reading, margin -0.43 and -0.10;
+  the reading is right on both, so these two are the price of a conservative
+  octave bar). `jitter-150` is "sure": its 3.5 ms jitter puts the 95th
+  percentile at 6.5 ms around a grid the benchmark holds within 5 ms.
+- Cost: 22-759 ms per fixture over three runs on a shared machine, 1.8-3.5 s on
+  `long-6min`, nearly all of it the
+  coherence sweep `analysis_evidence` runs for the octave margin.
+
+### Rejected / tried and dropped
+
+- An off-beat bar of 0.5 (half-beat weight over beat weight) called two right
+  grids "look" (`change-128-142`, `secs-2`: 0.55 and 0.51, eighth-note hats at
+  128 BPM). A grid half a beat out reads the inverse, so 0.8 separates them.
 ## Unreleased — 2026-11-08 · A grid per stretch for songs no single grid holds (off)
 
 ### Changed
