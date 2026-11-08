@@ -1,6 +1,6 @@
 # Project map
 
-Code graph last refreshed: 2026-10-16 (the local Graphify venv could not start on 2026-10-24); architecture facts reviewed 2026-10-24. Project delivery status refreshed: 2026-10-16. The map follows the current source
+Code graph and architecture reviewed: 2026-11-07. Project delivery status refreshed: 2026-11-07. The map follows the current source
 tree and the responsibilities visible in code, manifests and documentation.
 The Mermaid diagram is the human-reviewed architectural index. Graphify's
 code-level relationships, report and interactive view are generated locally
@@ -23,16 +23,15 @@ Generated locally, not in Git:
 The graph was extracted with Graphify 0.9.91 using the offline `--code-only`
 and `--cargo` options. This indexes source-code relationships and Rust crate
 dependencies without semantic processing of documents or sending project code
-to an API. The current graph contains 5,445 nodes, 12,715 edges and 236
-communities from 96 code files represented by nodes, including the Rust crate manifest edges and
-SQLite schema. Its interactive HTML aggregates communities for readability;
+to an API. The current graph contains 3,907 nodes, 9,345 edges and 214
+communities, including the Rust crate manifest edges and SQLite schema. Its interactive HTML aggregates communities for readability;
 `graph.json` retains the full graph. The Mermaid diagram and ownership table
 include broader project structure and documentation relationships that a
 code-only graph does not extract.
 
-## Delivery status and remaining work — 2026-10-16
+## Delivery status and remaining work — 2026-11-07
 
-The task/status graph is separate from the 5,445-node code graph so the release
+The task/status graph is separate from the 3,907-node code graph so the release
 state remains readable. Each entry carries its source document and line; the
 status index is a curated view of the roadmap, not a second authority. Update
 `docs/project-status.json` when the roadmap changes, then regenerate its Graphify
@@ -75,7 +74,7 @@ are outside the 0.3.0 required rows.
 - Golden vectors: 27; Rust parity manifest: 268 of 567 v3 engine tests held,
   with 166 stages placed (the `.osu` reader's Rust twin is parked with
   `overtone-hitsound`).
-- Library schema: v3 in both `python/library.sql` and `python/overtone_library.py`.
+- Library schema: v3 in both `python/library.sql` and `python/overtone_library/schema.py`.
 - Benchmark fixtures: 38 in code and 38 in `bench/fixtures.json`.
 
 Corpus B was rescored 2026-10-24 after `bench/corpus_b.py` learned to apply the
@@ -86,6 +85,11 @@ Corpus B keeps cached analyses raw and scores the output shift separately;
 `--map-lead-ms 0` reproduces the engine-only result.
 See `bench/corpus_b.py` and `docs/10-precision-plan.md` before making claims
 about real-song accuracy.
+
+Locked ranked cohorts measured on 2026-11-07 contain 7,322 map rows across three stages.
+The held-out within-5ms baseline is 4.31% for bands, 2.26% for variable anime and
+1.01% for single-line anime, before a fitted global phase correction. Pairing
+conflicts and independent confirmation remain open; see `docs/timeline.md`.
 
 ## Repository architecture
 
@@ -98,9 +102,9 @@ flowchart TD
     Shell[Command line] --> Engine
 
     subgraph Python[python/ — v3 engine and its services]
-        Engine[overtone.py<br/>analysis · osu I/O · CLI]
+        Engine[overtone/<br/>analysis · osu I/O · CLI]
         RustAdapter[overtone_rust.py<br/>v4 sidecar adapter]
-        Library[overtone_library.py + library.sql<br/>SQLite / FTS5 Songs index]
+        Library[overtone_library/ + library.sql<br/>SQLite / FTS5 Songs index]
         Runs[overtone_runs.py<br/>measurement runs]
         Paths[overtone_paths.py<br/>data folder and version]
         Server --> Library
@@ -144,7 +148,7 @@ flowchart TD
 
     subgraph Docs[docs/ — design, roadmap and process]
         Architecture[03-architecture.md · 05-dsp-pipeline.md]
-        Roadmap[07-roadmap.md · 10-precision-plan.md · 16-web-platform.md]
+        Roadmap[07-roadmap.md · 10-precision-plan.md]
         Process[workflow.md · timeline.md · project-map.md]
     end
     Architecture -. describes .-> Python
@@ -161,7 +165,7 @@ flowchart TD
 | `python/` | v3 reference engine, `.osu` I/O, CLI, library index and the headless measurement server | Rust adapter, bench, the owner's server |
 | `crates/` | Rust v4 analysis engine, sidecar and bench | Python adapter, audio and map inputs, Rust gates |
 | `bench/` | Accuracy, parity, robustness, coverage, performance and facts | Python v3, Rust crates, docs and benchmark data |
-| `bench/stages.py`, `bench/accuracy_manifest.py`, `bench/accuracy_audit.py`, `bench/accuracy_compare.py`, `bench/phase_residual.py` | Song- and set-disjoint ranked-map scoring, locked cohort runs (dev/held out and a disjoint confirmation cohort), dense-map metrics, duplicate-difficulty agreement, paired audio-clustered comparisons, robust phase-drift diagnostics | Local audio/map files; private reports stay under ignored `bench/.cache/` |
+| `bench/stages.py`, `bench/accuracy_manifest.py`, `bench/accuracy_audit.py`, `bench/accuracy_compare.py`, `bench/accuracy_stats.py`, `bench/phase_residual.py` | Song- and set-disjoint ranked-map scoring, locked cohort runs (dev/held out and a disjoint confirmation cohort), dense-map metrics, duplicate-difficulty agreement, paired song/set-clustered comparisons, evaluator fingerprints, robust phase-drift diagnostics | Local audio/map files; private reports stay under ignored `bench/.cache/` |
 | `bench/tempo_model.py`, `bench/tempo_judge_eval.py`, `python/overtone/tempo_judge.py` | Roadmap 27.8: a numpy tempo/octave classifier trained on mapped tempi, its octave judge scored on a stage's cached analyses, and the engine stage behind `TEMPO_JUDGE` (off) | Server Songs folder and run cache for training; the shipped weights are `assets/models/tempo_judge.npz` |
 | `tests/` | Python engine, file I/O, command-line and server tests | `python/`, fixture files |
 | `proto/` | Python experiments for candidate algorithms | Bench prototypes before a Rust port |

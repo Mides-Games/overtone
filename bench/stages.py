@@ -63,6 +63,7 @@ import overtone_library as lib  # noqa: E402
 import corpus_b as cb  # noqa: E402
 import single_bpm as sb  # noqa: E402
 import diagnose  # noqa: E402
+from accuracy_stats import clustered_mean_interval  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "stages.json"
@@ -93,17 +94,22 @@ def change_point_counts(map_lines: list[tuple[float, float]],
                 in zip(lines[1:], lines[:-1])
                 if previous_bpm > 0 and abs(bpm / previous_bpm - 1.0) > threshold]
 
-    truth, predicted = changes(map_lines), changes(engine_lines)
-    pairs = sorted((abs(p - t), p, t) for p in predicted for t in truth
-                   if abs(p - t) <= tolerance_ms)
-    used_pred, used_truth, errors = set(), set(), []
-    for _distance, p, t in pairs:
-        if p in used_pred or t in used_truth:
-            continue
-        used_pred.add(p)
-        used_truth.add(t)
-        errors.append(p - t)
-    tp, fp, fn = len(errors), len(predicted) - len(used_pred), len(truth) - len(used_truth)
+    truth, predicted = sorted(changes(map_lines)), sorted(changes(engine_lines))
+    # Match the earliest compatible pair. Taking the closest pair first can
+    # consume the only partner of a neighbouring change and undercount recall.
+    i = j = 0
+    errors = []
+    while i < len(truth) and j < len(predicted):
+        error = predicted[j] - truth[i]
+        if error < -tolerance_ms:
+            j += 1
+        elif error > tolerance_ms:
+            i += 1
+        else:
+            errors.append(error)
+            i += 1
+            j += 1
+    tp, fp, fn = len(errors), len(predicted) - len(errors), len(truth) - len(errors)
     precision = tp / (tp + fp) if tp + fp else (1.0 if not truth else 0.0)
     recall = tp / (tp + fn) if tp + fn else (1.0 if not predicted else 0.0)
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
@@ -114,6 +120,16 @@ def change_point_counts(map_lines: list[tuple[float, float]],
 
 def load_manifest() -> dict:
     return json.loads(MANIFEST.read_text(encoding="utf-8"))
+
+
+def evaluation_fingerprint() -> str:
+    """Identify scoring code separately from the cached analysis engine."""
+    digest = hashlib.sha256()
+    for name in ("stages.py", "accuracy_stats.py", "corpus_b.py", "diagnose.py",
+                 "single_bpm.py", "mapper_agreement.py", "accuracy_manifest.py"):
+        digest.update(name.encode())
+        digest.update((HERE / name).read_bytes().replace(b"\r\n", b"\n"))
+    return digest.hexdigest()
 
 
 def is_holdout(folder: str, share: float) -> bool:
@@ -415,10 +431,13 @@ def summarise(maps: list[dict], shift_ms: float, beat_shift_ms: float = 0.0) -> 
     dense = [m for m in maps if m["map_lines"] >= 20 or
              (m.get("duration_s") and m["map_lines"] / (m["duration_s"] / 60.0) >= 1.0)]
     dense_song_values = []
+    dense_observations = []
     for audio in sorted({m.get("audio_sha1", m["folder"]) for m in dense}):
-        value = line_share([m for m in dense if m.get("audio_sha1", m["folder"]) == audio])
+        part = [m for m in dense if m.get("audio_sha1", m["folder"]) == audio]
+        value = line_share(part)
         if value is not None:
             dense_song_values.append(value)
+            dense_observations.append((value, part[0].get("split_key", audio)))
 
     def change_summary(part: list[dict]) -> dict:
         counts = [m.get("change_points", {}) for m in part]
@@ -434,13 +453,7 @@ def summarise(maps: list[dict], shift_ms: float, beat_shift_ms: float = 0.0) -> 
                 "precision": precision, "recall": recall, "f1": f1,
                 "median_map_error_ms": statistics.median(offsets) if offsets else None,
                 "tolerance_ms": CHANGE_TOLERANCE_MS}
-    # Cluster bootstrap by song, not by red line or difficulty.
-    ci = None
-    if len(dense_song_values) >= 2:
-        rng = np.random.default_rng(2710)
-        sample = np.asarray(dense_song_values, dtype=float)
-        draws = np.mean(rng.choice(sample, size=(10000, len(sample)), replace=True), axis=1)
-        ci = [float(np.quantile(draws, 0.025)), float(np.quantile(draws, 0.975))]
+    ci = clustered_mean_interval(dense_observations, seed=2710)
 
     errors = [r["error_ms"] for m in maps for r in m["rows"] if r["error_ms"] is not None]
     # Red line by red line: on a map with tempo changes, how many of its lines
@@ -474,6 +487,7 @@ def summarise(maps: list[dict], shift_ms: float, beat_shift_ms: float = 0.0) -> 
         "dense_song_macro_within_5ms": (statistics.mean(dense_song_values)
                                            if dense_song_values else None),
         "dense_song_macro_ci95": ci,
+        "dense_independent_groups": len({group for _, group in dense_observations}),
         "dense_definition": "map_lines >= 20 OR map_lines / audio_minutes >= 1",
         "change_points": change_summary(maps),
         "dense_change_points": change_summary(dense),
@@ -678,6 +692,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    {folder[:70]:<70} {', '.join(sorted(set(whys)))}")
 
     payload = {"stage": stage, "engine": args.engine, "fingerprint": fingerprint,
+               "evaluation_fingerprint": evaluation_fingerprint(),
                "holdout_share": share,
                "split_rule": SPLIT_RULE,
                "ranked": ranked_info, "cohort": cohort_info,

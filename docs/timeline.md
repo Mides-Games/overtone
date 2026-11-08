@@ -20,6 +20,136 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-07 · Locked ranked baselines and independent accuracy intervals
+
+### Changed
+
+- Measured roadmap 27.10 on three frozen ranked cohorts using the app engine,
+  Beat This! vote off and TEMPO_JUDGE off. Reports record the evaluator's SHA-256
+  separately from the engine fingerprint; paired comparisons reject different
+  evaluators instead of attributing a scoring change to the engine.
+- Intervals resample whole recording/set groups while retaining equal weight per
+  audio. One independent group cannot produce an interval. Phase plots show one
+  worst section per recording, so repeated difficulties do not fill every panel.
+- Roadmap 27.11 pairing audit: `accuracy_audit.py --pairing` scores both grids of
+  every disagreeing duplicate-difficulty pair against the shared audio's onsets
+  (±80 ms sweep, 0.5 ms steps) and names the side nearer the cohort's usual lead,
+  read from 30 agreeing audios so the disputed pairs do not set their own reference.
+  It is diagnostic: no map leaves a cohort on its verdict.
+
+### Fixed
+
+- Closest-first tempo-change matching could lose a valid second match. A fixture
+  with reference transitions at 10,020/10,040 ms and detections at 10,035/10,055 ms
+  now matches 2/2 instead of 1/2 within 20 ms, using chronological matching.
+- Two recordings belonging to one set previously counted as independent evidence
+  in bootstrap intervals. The comparison and stage summary now use their split key.
+
+### Hardening
+
+- All 7,322 map rows remain in the locked cohorts, including refusals and disputed
+  reference timings. No song/set split conflict occurs within or across cohorts.
+- Private manifests, per-map reports and plots stay on the measurement server or
+  under ignored `bench/.cache/`; no song identity or audio is published here.
+- The next accuracy task is to audit the conflicting reference timings, not train
+  against them or discard them to raise the score. An untouched confirmation cohort
+  and the release accuracy target remain open.
+
+### Measured
+
+Server source `e9dc5d0` plus this evaluator change, engine fingerprint
+`0f1213fb0d77cb53`. These are baseline measurements, not accuracy improvements.
+Scores below use the cached exported grid before a fitted global offset correction.
+
+| Ranked cohort | Total map rows | Held-out rows / distinct audios | Answered held out | Lines within 5 ms | Dense lines within 5 ms | Dense audio-macro 95% interval |
+|---|---:|---:|---:|---:|---:|---:|
+| bands-variable | 908 | 218 / 41 | 218 | 4.31% | 4.49% | 0.56–4.05% |
+| anime-variable | 2,295 | 654 / 118 | 654 | 2.26% | 2.29% | 0.73–2.19% |
+| anime-single | 4,119 | 1,289 / 200 | 1,280 | 1.01% | 0.00% | 0.00–0.00% |
+
+- Dense held-out groups: 11 bands, 102 variable anime, 5 single-line anime. The
+  preregistered density rule also includes short tracks with one line per minute;
+  the single-line dense subgroup is not a drift corpus.
+- Duplicate-difficulty audit: bands 3,198/3,198 pairs agree; variable anime
+  8,152/8,508 agree (356 conflicts on 11 audios, 20 explained by constant offset);
+  single-line anime 16,243/16,648 agree (379 conflicts on 13 audios, all constant
+  offsets; 26 pairs unscorable). Agreement is not proof of alignment to the sound.
+- Dev phase diagnostics: 1,854 dense band sections and 6,375 variable-anime sections;
+  median absolute fitted drift 84.61 and approximately 0 ms/min respectively. A
+  nearest-beat phase can wrap or hide an octave error; neither value is an accuracy
+  claim. Private plots were rendered and inspected.
+- Roadmap 27.1: bands dev has 171 adjacent octave-step candidates in 33 map rows;
+  variable anime 69 in 23; single-line anime zero. The 3% ratio tolerance counts
+  candidates, includes repeated difficulties, and does not classify true tempo changes.
+- Ranked grids do not sit at 0 ms on the decoded audio. Their best onset fit leads
+  by a median of +37.25 ms on bands (IQR 33.4–39.9), +36.5 ms on variable anime
+  (32.0–39.4) and +36.5 ms on single-line anime (31.8–39.0), 30 agreeing audios each.
+  The onset envelope itself lags clicks by only 2.0 ms, so the lead is decoder delay
+  plus mapper convention, not the measuring tool. Not yet separated into the two.
+- Pairing audit on the 735 disagreeing pairs (24 audios): variable anime 117 pairs
+  decided, 239 ties; single-line anime 293 decided, 86 ties. By audio, 11 of 24 hold
+  difficulties whose fits differ by 7–15 ms, and the audit names which drift from the
+  lead; the rest are ties with equal offsets, so their conflict is tempo or line
+  placement, which onsets at one offset cannot settle. One single-line set fits at
+  +59 to +69 ms throughout, likely another audio version.
+- Listening check (owner, 2026-11-07): A/B click clips of 14 flagged audios, clicks
+  placed at each group's grid plus the +36.5 ms envelope-peak lead. In most pairs the
+  clip whose clicks fell 7–15 ms before the envelope peak sounded on the beat: a
+  listener hears the beat at the attack's start, about 13 ms before the peak. The
+  check measured the reference, not the maps (one fixed lead favours whichever group
+  sits nearest it), so the audit now reads attack starts instead: the engine's
+  attacks re-timed on the waveform (precision_grid._retime_onsets). Read that way the
+  cohort lead is +23.75 ms bands (IQR 20.0–30.4), +23.5 ms variable anime (21.0–27.4)
+  and +22.75 ms single-line anime (19.0–30.5), 13 ms under the peak reading as heard.
+  Verdicts on attack starts: variable anime 112 decided (26 left, 86 right), 244 ties;
+  single-line anime 239 decided (48 left, 191 right), 140 ties; 15 audios flagged.
+  A second clip set at the attack lead is for judging the maps themselves; not yet
+  heard.
+- Verdicts are now a posterior: the natural spread of (fit - lead) is a kernel
+  density over agreeing audios split by hash, one half setting lead and spread, the
+  other held back. Validated on the held-back half by moving each grid a known
+  amount (a move of k ms moves its fit by exactly -k): with 75–78 held-back audios
+  per cohort and 90 % confidence required, 0–3 ms shifts are never called; 5 ms is
+  called right 0.6–1.3 %, 10 ms 1.3–10.0 % (wrong 0–0.7 %), 15 ms 16.7–42.9 % (wrong
+  1.3 %). The method is safe but weak: the spread between songs (IQR about 9 ms,
+  sd 8.1 ms) is as wide as the disputes. On the real pairs: variable anime 20
+  decided, 336 ties; single-line anime 68 decided, 311 ties; bands none disputed.
+- Decoder delay does not explain that spread (479 agreeing audios, three cohorts):
+  the LAME header's encoder delay is 12.0 or 13.1 ms and correlates -0.10 with the
+  fit; LAME-tagged, untagged and OGG files share a +24 to +26 ms median and the same
+  spread. The spread is the mappers' convention and each song's attack shape. The export lead MAP_LEAD_MS = 28.0, measured against the engine's grid, re-reads today on the locked dev
+  splits as +25.0 ms (bands) and +27.6 ms (variable anime): with that lead fitted on
+  dev, held-out first red lines within 5 ms go 0.0 -> 41.3 % and 1.1 -> 43.6 % of all
+  maps. The raw-grid baseline above deliberately omits that export lead.
+- Verification (2026-11-07, local): unittest 619 pass (10 skipped); benchmark 24/24,
+  median 0.0000 BPM / 0.14 ms; bpm-snapshot 24/24 unchanged; golden 27/27 stage for
+  stage; coverage, measures, signatures, robustness, reference 24/24, assisted (70
+  sections) and perf pass; real-audio had no local library to check; fixtures 38/38,
+  parity, facts and fuzz (3000 mutants, no crash) pass. No Rust code changed.
+
+### Rejected / tried and dropped
+
+- Treating a constant-offset disagreement as an invalid map automatically: only a
+  pairing audit can establish which annotation matches the intended audio version.
+- Interpreting many difficulties or alternate recordings in one set as independent
+  confidence evidence; bootstrap resampling now respects the same groups as splitting.
+- Judging pairing against 0 ms: every ranked map read about 35 ms early, so each pair
+  came out "neither". The verdict now uses the cohort's lead from agreeing audios.
+- Judging grids on the onset envelope's peak: the heard beat is the attack's start,
+  about 13 ms earlier, so the peak-based lead (+36.5 ms) and its verdicts described
+  the envelope, not the music. Replaced by the engine's re-timed attack starts.
+- A fixed 5 ms margin around the lead: it decided pairs the held-back check shows
+  cannot be told apart. Replaced by the validated posterior.
+- Correcting the fit by the MP3 encoder delay to narrow the spread: the delay is
+  near constant and uncorrelated with the fit, so it would remove nothing.
+- A per-song lead from the mapper (shrunk to the global lead) and the song's attack
+  shape (rise, percussive share, attack rate), cross-validated on 557 agreeing audios
+  (3311 maps; even/odd hash halves): the held-out spread stayed at 8.3–8.4 ms sd and
+  8.5–9.0 ms IQR against the global lead's 8.4 / 9.0. The narrower model called more
+  shifted pairs (15 ms: 58.8 % right against 37.8 %), but its wrong calls rose from
+  1.6 % to 4.7 %. The extra calls come from a narrower assumed spread, not a better
+  prediction, so the audit keeps the global lead.
+
 ## Unreleased — 2026-11-07 · Three repositories: the engine, the website and the bot
 
 ### Changed

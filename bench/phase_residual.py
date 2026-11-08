@@ -80,12 +80,20 @@ def section_metrics(rows: list[dict], detected: list[tuple[float, float]],
 
 
 def plot_sections(report: dict, sections: list[dict], output: Path) -> None:
-    """Plot the worst dev sections without changing or unwrapping their phase."""
+    """Plot the worst dev section per recording, with phase left wrapped."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    worst = sorted(sections, key=lambda s: abs(s["drift_ms_per_min"]), reverse=True)[:6]
+    worst, seen = [], set()
+    for section in sorted(sections, key=lambda s: abs(s["drift_ms_per_min"]), reverse=True):
+        recording = section.get("audio_sha1") or section["folder"]
+        if recording in seen:
+            continue
+        seen.add(recording)
+        worst.append(section)
+        if len(worst) == 6:
+            break
     if not worst:
         raise ValueError("no sections to plot")
     fig, axes = plt.subplots(len(worst), 1, figsize=(11, 3 * len(worst)), squeeze=False)
