@@ -126,7 +126,7 @@ def evaluation_fingerprint() -> str:
     """Identify scoring code separately from the cached analysis engine."""
     digest = hashlib.sha256()
     for name in ("stages.py", "accuracy_stats.py", "corpus_b.py", "diagnose.py",
-                 "single_bpm.py", "mapper_agreement.py", "accuracy_manifest.py"):
+                 "single_bpm.py", "mapper_agreement.py", "accuracy_manifest.py", "rankable.py"):
         digest.update(name.encode())
         digest.update((HERE / name).read_bytes().replace(b"\r\n", b"\n"))
     return digest.hexdigest()
@@ -690,6 +690,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n  dev songs with a wrong tempo: {len(failing)} (first 15)")
         for folder, whys in list(failing.items())[:15]:
             print(f"    {folder[:70]:<70} {', '.join(sorted(set(whys)))}")
+
+    # The headline the owner asked for (2026-11-08): per map, would its
+    # worst beat pass a modder (bench/rankable.py), before any mean.
+    import rankable
+    for m in maps:
+        m["rank"] = rankable.verdict(m, beat_shift)
+    summary["rankable"] = {"lead_ms": beat_shift}
+    print(f"\n  rankable (worst beat within {rankable.RANKABLE_MS:g} ms, exact within"
+          f" {rankable.EXACT_MS:g} ms, lead {beat_shift:+.1f} ms):")
+    pairs = rankable.ranked_pairs(maps)
+    rankable.print_pairs(pairs)
+    summary["rankable"]["ranked_pairs"] = len(pairs)
+    for name, part in (("dev", dev), ("holdout", held), ("confirmation", confirm)):
+        if part:
+            summary["rankable"][name] = rankable.summarise(part)
+            rankable.print_summary("held out" if name == "holdout" else name,
+                                   summary["rankable"][name])
 
     payload = {"stage": stage, "engine": args.engine, "fingerprint": fingerprint,
                "evaluation_fingerprint": evaluation_fingerprint(),

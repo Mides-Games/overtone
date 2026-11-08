@@ -918,6 +918,96 @@ class MeasurementRunTests(unittest.TestCase):
         self.assertEqual(store.meta(meta["id"])["state"], "interrupted")
 
 
+class RankableVerdictTests(unittest.TestCase):
+    """bench/rankable.py: a map's verdict is its worst beat, never a mean."""
+
+    @staticmethod
+    def row(offset, bpm, octave=1.0, bpm_error=0.0):
+        return {"offset_ms": offset, "bpm": bpm, "octave": octave, "bpm_error": bpm_error,
+                "error_ms": 0.0, "line": 0}
+
+    def verdict(self, map_lines, engine_lines, duration_s=60.0, shift=0.0, rows=None):
+        from bench.rankable import verdict
+        m = {"rows": rows or [self.row(o, b) for o, b in map_lines],
+             "lines": [list(line) for line in engine_lines], "duration_s": duration_s}
+        return verdict(m, shift)
+
+    def test_exact_grid_is_exact(self):
+        v = self.verdict([(1000.0, 180.0)], [(1000.0, 180.0)])
+        self.assertEqual((v["verdict"], v["cause"]), ("exact", None))
+        self.assertAlmostEqual(v["abs_ms"], 0.0, places=6)
+
+    def test_one_drifting_section_sets_the_verdict(self):
+        # Right for 40 s, then a 6 s section 8 ms late: a mean would call it exact.
+        v = self.verdict([(0.0, 120.0), (40000.0, 120.0), (46000.0, 120.0)],
+                         [(0.0, 120.0), (40008.0, 120.0), (46000.0, 120.0)])
+        self.assertEqual(v["verdict"], "rankable")
+        self.assertAlmostEqual(v["abs_ms"], 8.0, places=6)
+        v = self.verdict([(0.0, 120.0), (40000.0, 120.0), (46000.0, 120.0)],
+                         [(0.0, 120.0), (40015.0, 120.0), (46000.0, 120.0)])
+        self.assertEqual((v["verdict"], v["cause"]), ("miss", "lines"))
+
+    def test_slow_drift_misses_although_the_bpm_is_within_bar(self):
+        # 0.04 BPM off is "tempo ok" (0.05 bar), yet 60 s of it drifts ~13 ms.
+        v = self.verdict([(0.0, 180.0)], [(0.0, 180.04)])
+        self.assertEqual(v["verdict"], "miss")
+        self.assertGreater(v["lock_ms"], 5.0)
+
+    def test_decimal_bpm_is_judged_by_its_beats_only(self):
+        # A ranked map at 174.837 BPM: a grid on the same beats is exact.
+        v = self.verdict([(312.0, 174.837)], [(312.0, 174.837)], duration_s=200.0)
+        self.assertEqual(v["verdict"], "exact")
+
+    def test_double_time_is_caught_from_the_engine_side(self):
+        rows = [self.row(0.0, 120.0, octave=2.0)]
+        v = self.verdict([(0.0, 120.0)], [(0.0, 240.0)], rows=rows)
+        self.assertEqual((v["verdict"], v["cause"]), ("miss", "octave"))
+        self.assertAlmostEqual(v["abs_ms"], 250.0, places=6)
+
+    def test_constant_offset_is_named_and_the_lock_holds(self):
+        v = self.verdict([(1000.0, 150.0)], [(1012.0, 150.0)])
+        self.assertEqual((v["verdict"], v["cause"]), ("miss", "offset"))
+        self.assertAlmostEqual(v["lock_ms"], 0.0, places=6)
+        self.assertEqual(self.verdict([(1000.0, 150.0)], [(1009.0, 150.0)])["verdict"], "rankable")
+        # With the mappers' lead taken off, the same grid is exact.
+        self.assertEqual(self.verdict([(1000.0, 150.0)], [(1012.0, 150.0)], shift=12.0)["verdict"],
+                         "exact")
+
+    def test_a_grid_starting_just_before_the_map_finds_its_first_beat(self):
+        # Engine 9 ms early: its beat at 526 lies before the map's first line
+        # (535) and must still be the partner, not the one 309 ms later.
+        v = self.verdict([(535.0, 194.0)], [(526.0, 194.0)])
+        self.assertAlmostEqual(v["abs_ms"], 9.0, places=6)
+        self.assertAlmostEqual(v["lock_ms"], 0.0, places=6)
+
+    def test_refusal_is_a_miss(self):
+        v = self.verdict([(0.0, 120.0)], [])
+        self.assertEqual((v["verdict"], v["cause"]), ("miss", "refused"))
+
+    def test_song_counts_once_and_passes_against_any_map(self):
+        from bench.rankable import summarise
+        ok = {"verdict": "exact", "cause": None, "lock_ms": 1.0}
+        off = {"verdict": "miss", "cause": "offset", "lock_ms": 1.0}
+        maps = [{"audio_sha1": "a", "folder": "x", "rank": ok},
+                {"audio_sha1": "a", "folder": "x", "rank": off},
+                {"audio_sha1": "b", "folder": "y", "rank": off}]
+        s = summarise(maps)
+        self.assertEqual((s["songs"], s["songs_rankable"], s["songs_rankable_all"], s["songs_exact"]),
+                         (2, 1, 0, 1))
+        self.assertEqual(s["causes"]["offset"], 2)
+
+    def test_ranked_pairs_leave_copies_out_and_score_second_timers(self):
+        from bench.rankable import ranked_pairs
+
+        def m(folder, offset, audio="a"):
+            return {"audio_sha1": audio, "folder": folder, "duration_s": 30.0,
+                    "rows": [self.row(offset, 150.0)]}
+        pairs = ranked_pairs([m("x", 1000.0), m("y", 1000.0), m("z", 1007.0), m("w", 1000.0, "b")])
+        # x-y is a copy; x-z and y-z are two timers 7 ms apart; b has one set.
+        self.assertEqual(pairs.shape, (2, 2))
+        self.assertTrue(np.allclose(pairs[:, 0], 7.0) and np.allclose(pairs[:, 1], 0.0))
+
+
 class DiagnoseTests(unittest.TestCase):
     """bench/diagnose.py: each timing problem named, and its share of the time."""
 
