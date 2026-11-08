@@ -520,16 +520,59 @@ def cache_path(engine: str, track: dict, fingerprint: str) -> Path:
     return CACHE_DIR / f"{engine}-{track['id']}-{track['sha1_audio'][:12]}-{fingerprint}.json"
 
 
+def replay_path(path: Path) -> Path:
+    """Where a cached analysis keeps the Rust core's report (bench/replay.py):
+    beside it, gzipped, so a run holds one song's report in memory at a time
+    (the whole stage at once killed a 1,600-map run on the server, 2026-11-08)."""
+    return path.with_name(path.stem + ".replay.json.gz")
+
+
+def _keep_replay(path: Path, analysis: dict) -> None:
+    """Move ``analysis['replay']`` into its own file, leaving its path."""
+    replay = analysis.pop("replay", None)
+    if replay is None:
+        return
+    import gzip
+    target = replay_path(path)
+    temp = target.with_name(target.name + ".part")
+    with gzip.open(temp, "wt", encoding="utf-8") as handle:
+        json.dump(replay, handle)
+    os.replace(temp, target)
+    analysis["replay_file"] = str(target)
+
+
+def read_replay(analysis: dict) -> dict | None:
+    """A cached analysis's kept Rust report, read only when asked."""
+    name = analysis.get("replay_file")
+    if not name:
+        return analysis.get("replay")
+    import gzip
+    try:
+        with gzip.open(name, "rt", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return None
+
+
 def read_cache(path: Path) -> dict | None:
     try:
         cached = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    return cached if cached.get("format") == CACHE_FORMAT else None
+    if cached.get("format") != CACHE_FORMAT:
+        return None
+    if "replay" in cached:
+        # Written before the report had its own file: move it out once.
+        _keep_replay(path, cached)
+        write_cache(path, cached)
+    return cached
 
 
 def write_cache(path: Path, analysis: dict) -> None:
+    """Cache one analysis. Its kept Rust report goes to its own file and
+    leaves ``analysis`` (which is changed in place) holding only the path."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    _keep_replay(path, analysis)
     temp = path.with_suffix(".part")
     temp.write_text(json.dumps({"format": CACHE_FORMAT, **analysis}, indent=1), encoding="utf-8")
     os.replace(temp, path)

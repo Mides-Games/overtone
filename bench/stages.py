@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sqlite3
 import statistics
 from urllib.parse import quote
@@ -318,20 +319,31 @@ def write_replay(path: Path, songs: list[dict], analyses: dict, payload: dict) -
     """The Rust core's own report per audio, beside the run's report, so the
     conventions can be replayed without the audio (bench/replay.py, roadmap
     29.1). Derived features only: attacks, sections, points, onset envelope.
-    An analysis cached before the replay was kept has none, and is named."""
+    Written one audio at a time from each analysis's own replay file, so the
+    run never holds every report at once. An analysis cached before the
+    replay was kept has none, and is counted."""
     import gzip
-    bundle: dict = {}
-    for song in songs:
-        analysis = analyses[song["id"]]
-        bundle.setdefault(song["audio_sha1"], {
-            "backend": analysis.get("backend"), "path": analysis.get("path"),
-            "duration_s": analysis.get("duration_s"), "lines": analysis.get("lines"),
-            "replay": analysis.get("replay")})
-    kept = sum(entry["replay"] is not None for entry in bundle.values())
     meta = {k: payload[k] for k in ("stage", "engine", "fingerprint", "run")}
-    with gzip.open(path, "wt", encoding="utf-8") as handle:
-        json.dump({"meta": meta, "audios": bundle}, handle)
-    print(f"  replay: {kept} of {len(bundle)} audios kept their Rust report ({path.name})")
+    seen: set[str] = set()
+    kept = 0
+    temp = path.with_name(path.name + ".part")
+    with gzip.open(temp, "wt", encoding="utf-8") as handle:
+        handle.write('{"meta": ' + json.dumps(meta) + ', "audios": {')
+        for song in songs:
+            if song["audio_sha1"] in seen:
+                continue
+            seen.add(song["audio_sha1"])
+            analysis = analyses[song["id"]]
+            replay = cb.read_replay(analysis)
+            kept += replay is not None
+            entry = {"backend": analysis.get("backend"), "path": analysis.get("path"),
+                     "duration_s": analysis.get("duration_s"), "lines": analysis.get("lines"),
+                     "replay": replay}
+            handle.write(("" if len(seen) == 1 else ", ") + json.dumps(song["audio_sha1"])
+                         + ": " + json.dumps(entry))
+        handle.write("}}")
+    os.replace(temp, path)
+    print(f"  replay: {kept} of {len(seen)} audios kept their Rust report ({path.name})")
 
 
 def lines_on_bars(reds, detected, duration_s: float) -> list[bool]:
@@ -659,6 +671,7 @@ def main(argv: list[str] | None = None) -> int:
     for song, result in cb.run_analyses(todo, args.engine, cli, args.jobs):
         if result["path"] != "error":
             cb.write_cache(sb.cache_path(args.engine, song, fingerprint), result)
+        result.pop("replay", None)      # an error's report is not kept in memory either
         analyses[song["id"]] = result
 
     maps = [m for song in songs for m in score_song(song, analyses[song["id"]])]
