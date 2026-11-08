@@ -1209,3 +1209,33 @@ ASSISTED_CHANCE_LOG10P = -3.0
 MOD_STAMP = re.compile(r"^\d{2,}:\d{2}:\d{3}( \(\d+(,\d+)*\))?$")
 #: The order sources are listed in when two findings share a moment.
 MOD_SOURCES = ("reference", "suggestion", "snap", "alignment")
+
+#: The engine's own verdict on a timing, without a map (roadmap 29.5,
+#: overtone.self_check). UNCALIBRATED: chosen conservatively on the synthetic
+#: fixtures, to be measured with bench/replay.py against ranked maps (wanted:
+#: at least 95 % of the songs called "sure" rankable, every beat within 10 ms of
+#: the ranked map). Until then SELF_CHECK_CALIBRATED says so in every verdict.
+SELF_CHECK_CALIBRATED = False
+#: The strong attacks: this top share of a red line's attacks by weight.
+SELF_CHECK_STRONG_SHARE = 0.5
+#: Within this fraction of a beat an attack is on the beat (or the half beat).
+SELF_CHECK_NEAR_BEAT = 0.125
+#: A red line with fewer strong attacks near its beats is not read as sure.
+SELF_CHECK_MIN_ATTACKS = 8
+#: The 95th percentile of the strong attacks' distance from their beat, ms.
+#: Below the 10 ms two ranked timers of the same audio differ by.
+SELF_CHECK_P95_MS = 8.0
+#: The strong attacks' weight on neither a beat nor a half beat, at most.
+SELF_CHECK_FAR_SHARE = 0.25
+#: The weight on the half beats over the weight on the beats, at most: past
+#: it the grid may be half a beat out, or the song an octave off. A grid half
+#: a beat out reads 1/r where the right one reads r; the synthetic fixtures
+#: read r up to 0.55 on the right grid (eighth-note hats at 128 BPM), and 0.5
+#: called two of them "look" for that alone.
+SELF_CHECK_OFFBEAT_RATIO = 0.8
+#: The seed's coherence over the strongest octave neighbour's, at least, when
+#: the sweep saw one (analysis_evidence's octave_margin).
+SELF_CHECK_OCTAVE_MARGIN = 0.0
+#: The linear trend of the distance across the whole red line, ms: what a BPM
+#: a few thousandths out leaves behind.
+SELF_CHECK_DRIFT_MS = 5.0

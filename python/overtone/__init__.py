@@ -77,12 +77,13 @@ import types as _types
 from . import (params, data_model, onsets, hybrid_tracker, tempo_helpers,  # noqa: E402
                precision_grid, audio_io, pipeline, red_lines, beat_this, drum_signal,
                octave_choice, phrases, exports, validation, editing, osu_write, osu_read,
-               map_objects, reference_timing, sounds, structure, cli, tempo_judge)
+               map_objects, reference_timing, sounds, structure, cli, tempo_judge,
+               self_check)
 
 _MODULES = (params, data_model, onsets, hybrid_tracker, tempo_helpers, precision_grid,
             audio_io, pipeline, red_lines, beat_this, drum_signal, octave_choice, phrases,
             exports, validation, editing, osu_write, osu_read, map_objects, reference_timing,
-            sounds, structure, cli, tempo_judge)
+            sounds, structure, cli, tempo_judge, self_check)
 #: Names every module imports (``np``, ``os``, ``Path``...): a write reaches all.
 _SHARED = frozenset(n for n in vars() if not n.startswith("__") and n not in
                     {m.__name__.rpartition(".")[2] for m in _MODULES} | {"_types"})
@@ -98,6 +99,10 @@ for _module in _MODULES:
                               f"and {_module.__name__}")
         _OWNER[_name] = _module
 del _module, _name
+# The one stage named after its function: ``overtone.self_check`` is the
+# function, which the package's ``__getattr__`` finds once the module's binding
+# here is gone (the module stays in sys.modules and in _MODULES).
+del self_check
 
 
 class _Engine(_types.ModuleType):

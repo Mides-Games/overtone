@@ -241,7 +241,18 @@ def build_result(analysis, *, vote: bool, hash_: str) -> dict:
         "osu_timing": ta.osu_timing_text(analysis),
         **evidence,
         **asked(),
+        "self_check": _self_check(analysis),
     }
+
+
+def _self_check(analysis) -> dict | None:
+    """The engine's own verdict (roadmap 29.5, uncalibrated): optional, so a
+    reader that does not know it reads the result unchanged; None when it
+    could not be read, never a failed job."""
+    try:
+        return _plain(ta.self_check(analysis))
+    except Exception:  # noqa: BLE001 -- a report beside the timing, never a blocker
+        return None
 
 
 def asked(mode: str = DEFAULT_MODE, options: dict | None = None) -> dict:
