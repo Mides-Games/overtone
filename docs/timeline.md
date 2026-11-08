@@ -20,6 +20,26 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · The measurement server keeps its disk
+
+### Hardening
+
+- The measurement server's disk was 94 % full (6.4 GB free): analysis caches of every
+  engine fingerprint ever run (2.0 GB; a new fingerprint re-analyses everything and the
+  old one is never read again) and, since #154, replay bundles of every stage run. After
+  each run, `overtone_runs` now keeps the 3 newest fingerprints per engine
+  (`CACHE_KEEP_FINGERPRINTS`) and the replay bundles of the 24 newest runs
+  (`REPLAY_KEEP_RUNS`), and says how much it freed. Both are regenerable.
+- Also seen there: the run service's `MemoryMax` is 5 GB and its peak had reached it,
+  which is what killed the variable-anime dev run (#160 lowers the run's footprint).
+
+### Measured
+
+- Local: the retention tests pass; facts and parity pass. The server's next run logs
+  what it freed.
+
+---
+
 ## Unreleased — 2026-11-08 · A replay leaves the engine as it found it
 
 ### Fixed

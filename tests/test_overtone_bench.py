@@ -4,6 +4,7 @@ import os
 import struct
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -916,6 +917,43 @@ class MeasurementRunTests(unittest.TestCase):
         store.write(meta)
         self.runs.RunQueue(store, self.index, self.songs)
         self.assertEqual(store.meta(meta["id"])["state"], "interrupted")
+
+
+class RunRetentionTests(unittest.TestCase):
+    """overtone_runs: old analysis caches and replay bundles do not fill the disk."""
+
+    def test_only_the_newest_fingerprints_of_each_engine_are_kept(self):
+        import overtone_runs as runs
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            now = time.time()
+            for n, fp in enumerate(["a" * 16, "b" * 16, "c" * 16, "d" * 16]):
+                for name in (f"app-song-1-{fp}.json", f"app-song-1-{fp}.replay.json.gz"):
+                    (folder / name).write_text("x", encoding="utf-8")
+                    os.utime(folder / name, (now + n, now + n))
+            (folder / f"python-song-1-{'e' * 16}.json").write_text("x", encoding="utf-8")
+            os.utime(folder / f"python-song-1-{'e' * 16}.json", (now - 100, now - 100))
+            (folder / "notes.txt").write_text("x", encoding="utf-8")
+            self.assertEqual(runs.prune_cache(folder, keep=2), 4)
+            left = sorted(p.name for p in folder.iterdir())
+            self.assertEqual(left, sorted([f"app-song-1-{'c' * 16}.json",
+                                           f"app-song-1-{'c' * 16}.replay.json.gz",
+                                           f"app-song-1-{'d' * 16}.json",
+                                           f"app-song-1-{'d' * 16}.replay.json.gz",
+                                           f"python-song-1-{'e' * 16}.json", "notes.txt"]))
+
+    def test_only_the_newest_runs_keep_their_replay_bundle(self):
+        import overtone_runs as runs
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ids = [f"20261108-1{n}0000-abcdef" for n in range(5)]
+            for run_id in ids:
+                (root / run_id).mkdir()
+                (root / run_id / "replay.json.gz").write_bytes(b"xx")
+                (root / run_id / "result.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(runs.prune_replays(root, keep=3), 4)
+            self.assertEqual([i for i in ids if (root / i / "replay.json.gz").exists()], ids[2:])
+            self.assertTrue(all((root / i / "result.json").exists() for i in ids))
 
 
 class ReplayTests(unittest.TestCase):
