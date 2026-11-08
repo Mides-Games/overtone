@@ -20,6 +20,48 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · Tempo changes found on the attacks and landed on the beat (off)
+
+### Changed
+
+- Roadmap 29.4, behind `CHANGE_ON_BEAT` (off, experiment `change-on-beat`), after
+  `_change_points` in both v3's pipeline and `overtone_rust.conventions`. The diagnosis
+  of the variable anime maps found the main line usually right and the misses in
+  stretches at another tempo (intros, outros, mid-song runs, a median 4.5 % apart), fixable
+  only on the exact beat. On each precision red line's span the strong attacks' phase
+  error against the line is unwrapped from where the line fits best, with no
+  expected-beat follower (CHANGE_POINTS lost the changes in its follower, 2026-11-06).
+  Optimal partitioning with a BIC penalty finds where it bends. Each cut goes to the
+  attack-bearing beat where two tempos meeting on it fit best. It stays only if, on
+  16 beats either side, both sides fit their own tempo better than one shared tempo
+  (x0.7), each side is steady, the next window out keeps its tempo (a drifting song's
+  does not), and the step is 0.5 % or more. Each side's period is refitted on its own
+  attacks. BPMs snap to whole, then .5, where the attacks agree, else two decimals.
+- `_piecewise_segments` takes the penalty as an argument; its default is unchanged.
+
+### Measured
+
+- Off by default and **not measured on ranked maps**. To be measured with
+  `bench/replay.py --set CHANGE_ON_BEAT=True` on a run's replay bundle.
+- Synthetic (tests): with the engine's analysis cut back to one line, a 32-beat intro
+  at 150 before 160 BPM and four bars at +3 % inside 150 BPM are cut within 5 ms of the
+  true beats at 150/160 and 150/154.5/150. A steady click track and steady attacks with
+  5–15 ms jitter and off-beats get no line, and so does a slow ±0.3/0.6 % drift.
+  Off-test sweeps: intros, mid-song runs and outros of 2–9 % at 3–6 ms jitter came
+  out at the right BPM, mostly on the right beat. Below about 2 %, or at 10 ms jitter,
+  the cut often lands one beat off. A fast drift (±0.6–1 %, 3–4 cycles a song) split
+  in 3 of 30 cases.
+- Flag on, on this PC: `bench/benchmark.py` 24/24 (median 0.0000 BPM, 0.14 ms),
+  `gates.py bpm-snapshot` 24/24 unchanged (BPM and section count), `gates.py reference`
+  24/24. Per-row offsets were not diffed against a flag-off run. The corpus's clean
+  changes are already written by the core.
+- Flag off, on this PC (owner's rule of 2026-11-08: the PC is overloaded, so the full
+  suite and gates run on the VPS): `ChangeOnBeatTests` and `ReplayTests`,
+  `bench/parity.py`, `bench/facts.py`. Before the rebase on #150–#154, the full suite
+  failed only on a `ReplayTests` mock (fixed: the flag is read first), and the benchmark
+  was 24/24 and golden 27/27.
+- `MERGE_STEADY_LINES` (on) still merges lines whose BPMs sit within 0.5 % of their
+  median, so a split under about 1 % can be undone downstream.
 ## Unreleased — 2026-11-08 · A phase check for grids half a beat off
 
 ### Changed

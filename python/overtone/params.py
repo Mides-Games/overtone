@@ -499,6 +499,51 @@ CHANGE_GAIN = 0.85
 CHANGE_MIN_BEATS = 16
 
 
+#: Tempo changes found on the attacks and landed on the beat (roadmap 29.4,
+#: CHANGE_ON_BEAT). Ranked variable-tempo anime maps (2026-11-08 diagnosis):
+#: the engine's main line usually has the map's BPM, and what it misses are
+#: stretches at another tempo -- intros, outros (median ~30 beats) and
+#: mid-song runs -- a median 4.5 % apart; a change placed one beat late fixes
+#: almost nothing. On each red line's span the strong attacks' signed phase
+#: error against that line's grid is unwrapped (no beat follower: CHANGE_POINTS
+#: lost the changes in its follower) and cut where it bends from flat to a ramp,
+#: by optimal partitioning with a BIC penalty (CHANGE_BEAT_BIC x ln n, in the
+#: attacks' own spread). Each cut goes to the attack-bearing beat that best
+#: splits the two sides, each side's period refitted on its own attacks
+#: anchored there; a cut stays only if, on the beats next to it, both sides fit
+#: their own tempo better than one shared tempo by CHANGE_BEAT_GAIN, each side is
+#: steady on its own,
+#: and the step is at least CHANGE_BEAT_MIN_STEP. Off and unmeasured on ranked
+#: maps (to be measured with bench/replay.py).
+CHANGE_ON_BEAT = False
+#: Fewest beats a stretch at its own tempo holds.
+CHANGE_BEAT_MIN_BEATS = 8
+#: Penalty per new stretch, times ln(beats) and the attacks' spread squared.
+CHANGE_BEAT_BIC = 3.0
+#: Smallest spread (ms) assumed for the attacks: clean clicks would else read
+#: sample rounding as a tempo change.
+CHANGE_BEAT_SIGMA_MS = 3.0
+#: Beats either side of a bend searched for the cut.
+CHANGE_BEAT_REACH = 4
+#: A cut is judged on this many beats either side of it: a bend changes tempo
+#: there, while a song that drifts smoothly reads nearly one tempo across any cut.
+CHANGE_BEAT_WINDOW = 16
+#: Each side's own-tempo RMS must be at most this share of the shared tempo's.
+CHANGE_BEAT_GAIN = 0.7
+#: and each side, on its own tempo, within this many spreads of its attacks:
+#: a drifting stretch is not a steady one.
+CHANGE_BEAT_STEADY = 2.5
+#: and, where a side runs on past the window, its next window out within this
+#: share of the step of the window's tempo: flat, then the bend.
+CHANGE_BEAT_FLAT = 0.5
+#: Smallest tempo step kept (0.5 %).
+CHANGE_BEAT_MIN_STEP = 0.005
+#: An attack is strong when it is at least this share of the median weight
+#: around it (CHANGE_BEAT_LOCAL_S either side), so a quiet intro still counts.
+CHANGE_BEAT_STRONG = 0.5
+CHANGE_BEAT_LOCAL_S = 8.0
+
+
 #: A gap is the faster pulse's when it sits within this share of half the median.
 STEADY_GRID_HALF_TOL = 0.15
 #: and the faster pulse is the grid's when this share of the gaps is at it.

@@ -2,7 +2,9 @@
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -19,8 +21,11 @@ from overtone import (HOP, MIN_PULSE_GAP, _load_audio, _onset_envelope, _pulse_g
                       section_measures, detect_bar, meter_segments, points_from_meter,
                       _points_from_sections, snap_timing_points)
 
-from engine_support import (_accented_attacks, _accented_track, _click_track,
-                            _drum_track, _offset_error_ms, setUpModule, tearDownModule)  # noqa: F401
+from overtone import _change_on_beat, params
+
+from engine_support import (_accented_attacks, _accented_track, _click_segments, _click_track,
+                            _drum_track, _offset_error_ms, _validation_analysis,
+                            setUpModule, tearDownModule)  # noqa: F401
 
 
 class SegmentationTests(unittest.TestCase):
@@ -1043,6 +1048,99 @@ class CoherenceMapTests(unittest.TestCase):
         self.assertGreater(freqs.size, 0)                    # the grid is fixed
         at, period, r = map_ridge(centres, freqs, columns)
         self.assertEqual((at.size, period.size, r.size), (0, 0, 0))
+
+
+class ChangeOnBeatTests(unittest.TestCase):
+    """CHANGE_ON_BEAT (roadmap 29.4): a red line whose span holds a stretch at
+    another tempo is split on the beat that stretch starts, each side at its
+    own BPM. The engine finds these clean clicks' changes itself, so each case
+    starts from its analysis read back as the one line it would miss them with."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        root = Path(cls._tmp.name)
+        sr = 44100
+        # An intro of 32 beats at 150, then 160.
+        _click_track(root / "intro.wav", 150.0, duration=37.5, change_at=13.0, second_bpm=160.0)
+        cls.intro_change = int(round((0.25 + 32 * 0.4) * sr)) / sr * 1000.0
+        # Four bars at +3 % in the middle of a 150 BPM song.
+        cls.mid_clicks = _click_segments(root / "mid.wav", [(150.0, 48), (154.5, 16), (150.0, 48)])
+        cls.steady_clicks = _click_segments(root / "steady.wav", [(150.0, 112)])
+        cls.analyses = {name: analyze_audio(str(root / f"{name}.wav"), beat_vote=False)
+                        for name in ("intro", "mid", "steady")}
+        cls.root = root
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    @staticmethod
+    def _one_line(analysis, which):
+        """The analysis with only its ``which``-th red line, carried back to
+        before the first attack."""
+        point = analysis.points[which]
+        period = 60000.0 / point.bpm
+        first = float(np.min(analysis.attack_times)) * 1000.0
+        offset = point.offset_ms - np.ceil((point.offset_ms - first) / period) * period
+        return replace(analysis, points=[replace(point, offset_ms=float(offset))])
+
+    def _split(self, analysis):
+        with mock.patch.object(params, "CHANGE_ON_BEAT", True):
+            return _change_on_beat(analysis)
+
+    def test_engine_reads_the_clicks_changes_itself(self):
+        self.assertEqual([round(p.bpm, 2) for p in self.analyses["intro"].points], [150.0, 160.0])
+        self.assertEqual(len(self.analyses["mid"].points), 3)
+
+    def test_intro_at_another_tempo_is_cut_on_its_last_beat(self):
+        out = self._split(self._one_line(self.analyses["intro"], 1))
+        self.assertEqual(len(out.points), 2)
+        self.assertLess(abs(out.points[0].bpm - 150.0), 0.05)
+        self.assertLess(abs(out.points[1].bpm - 160.0), 0.05)
+        self.assertLess(abs(out.points[1].offset_ms - self.intro_change), 5.0)
+
+    def test_four_bars_three_percent_faster_are_cut_on_both_beats(self):
+        out = self._split(self._one_line(self.analyses["mid"], 0))
+        self.assertEqual(len(out.points), 3)
+        for point, bpm in zip(out.points, (150.0, 154.5, 150.0)):
+            self.assertLess(abs(point.bpm - bpm), 0.05)
+        for point, beat in zip(out.points[1:], (48, 64)):
+            self.assertLess(abs(point.offset_ms - self.mid_clicks[beat] * 1000.0), 5.0)
+
+    def test_steady_track_gets_no_line(self):
+        steady = self.analyses["steady"]
+        self.assertIs(self._split(steady), steady)
+        with mock.patch.object(params, "CHANGE_ON_BEAT", True):
+            again = analyze_audio(str(self.root / "steady.wav"), beat_vote=False)
+        self.assertEqual([(p.offset_ms, p.bpm) for p in again.points],
+                         [(p.offset_ms, p.bpm) for p in steady.points])
+
+    def test_steady_jittered_attacks_with_off_beats_get_no_line(self):
+        rng = np.random.default_rng(29)
+        for jitter in (0.005, 0.010, 0.015):
+            beats = 0.5 + np.arange(300) * 0.4 + rng.normal(0, jitter, 300)
+            off = beats[:-1] + 0.2 + rng.normal(0, jitter, 299)
+            times = np.sort(np.concatenate([beats, off[rng.random(299) < 0.5]]))
+            analysis = replace(_validation_analysis([TimingPoint(500.0, 150.0, 0.9, 0)], 121.0),
+                               attack_times=times, attack_weights=rng.uniform(0.5, 1.5, times.size))
+            with self.subTest(jitter=jitter):
+                self.assertIs(self._split(analysis), analysis)
+
+    def test_slow_drift_gets_no_line(self):
+        rng = np.random.default_rng(4)
+        for amp in (0.003, 0.006):
+            tempo = 150.0 * (1.0 + amp * np.sin(np.arange(300) / 300.0 * 2.0 * np.pi))
+            beats = 0.5 + np.concatenate([[0.0], np.cumsum(60.0 / tempo[:-1])]) + rng.normal(0, 0.005, 300)
+            analysis = replace(_validation_analysis([TimingPoint(500.0, 150.0, 0.9, 0)], 121.0),
+                               attack_times=beats, attack_weights=rng.uniform(0.5, 1.5, 300))
+            with self.subTest(amp=amp):
+                self.assertIs(self._split(analysis), analysis)
+
+    def test_flag_off_changes_nothing(self):
+        collapsed = self._one_line(self.analyses["intro"], 1)
+        with mock.patch.object(params, "CHANGE_ON_BEAT", False):
+            self.assertIs(_change_on_beat(collapsed), collapsed)
 
 
 if __name__ == "__main__":

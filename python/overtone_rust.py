@@ -236,7 +236,7 @@ def conventions(analysis: ta.Analysis, path, min_delta: float = 1.5, persistence
     analysis = ta._snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
     if ta.DRIFT_FOLLOW:
         analysis = ta._follow_drift(analysis)
-    analysis = ta._change_points(analysis)
+    analysis = ta._change_on_beat(ta._change_points(analysis))
     before, before_beats = float(analysis.global_bpm), analysis.beats
     if ta._beat_this_session() is not None:
         if replay is not None:

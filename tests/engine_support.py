@@ -112,6 +112,28 @@ def _click_track(path: Path, bpm: float, duration: float = 12.0,
     sf.write(str(path), y, sr)
 
 
+def _click_segments(path: Path, segments, start: float = 0.25, sr: int = 44100) -> np.ndarray:
+    """_click_track's kick on every beat of ``segments`` ((bpm, beats), ...)
+    played back to back. Returns each kick's time, to the sample it starts on."""
+    import soundfile as sf
+    starts, tt = [], start
+    for bpm, beats in segments:
+        for _ in range(int(beats)):
+            starts.append(tt)
+            tt += 60.0 / bpm
+    y = np.zeros(int(sr * (tt + 1.0)), dtype=np.float32)
+    n = int(0.04 * sr)
+    t = np.arange(n) / sr
+    kick = (np.sin(2 * np.pi * 160 * t) * np.exp(-t / 0.006)).astype(np.float32)
+    clicks = []
+    for s in starts:
+        i = int(round(s * sr))
+        y[i:i + n] += kick
+        clicks.append(i / sr)
+    sf.write(str(path), y, sr)
+    return np.asarray(clicks)
+
+
 def _click_ramp(path: Path, bpm0: float, bpm1: float, duration: float,
                 sr: int = 44100) -> np.ndarray:
     """A click on every beat of a tempo ramping from ``bpm0`` to ``bpm1``: no

@@ -206,7 +206,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             analysis = red_lines._snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
             if follow_drift:
                 analysis = red_lines._follow_drift(analysis)
-            analysis = red_lines._change_points(analysis)
+            analysis = red_lines._change_on_beat(red_lines._change_points(analysis))
             before, before_beats = float(analysis.global_bpm), analysis.beats
             if beat_vote and beat_this._beat_this_session() is not None:
                 say("Checking the beats with Beat This!…")
