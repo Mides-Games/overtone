@@ -949,6 +949,20 @@ class ReplayTests(unittest.TestCase):
                 self.assertIsNone(why)
                 self.assertTrue(replay.same_lines(lines, result["lines"]), (lines, result["lines"]))
 
+    def test_a_replay_leaves_the_engine_as_it_found_it(self):
+        # Run in-process, it once left the Beat This! session off for every
+        # later test (the VPS suite's BeatThisTests failure, 2026-11-08).
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import overtone
+        import replay
+        session = list(overtone._BEAT_THIS_SESSION)
+        flag = overtone.PHASE_CHECK
+        replay.replay_one(("a", {"backend": "python"}, {"PHASE_CHECK": not flag}))
+        self.assertEqual(list(overtone._BEAT_THIS_SESSION), session)
+        self.assertEqual(overtone.PHASE_CHECK, flag)
+
     def test_the_kept_report_lives_in_its_own_file_not_in_memory(self):
         bench = str(Path(__file__).resolve().parent.parent / "bench")
         if bench not in sys.path:

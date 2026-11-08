@@ -43,19 +43,42 @@ def load_bundle(path: Path) -> dict:
         return json.load(handle)
 
 
-def _set_flags(flags: dict) -> None:
+def _set_flags(flags: dict) -> tuple[list, dict]:
+    """Switch the engine as the server's runs do (the vote off) plus
+    ``flags``; returns what was there, for _restore_flags."""
     import overtone as ta
-    ta._BEAT_THIS_SESSION[:] = [None]      # the server's runs keep the vote off
-    for name, value in flags.items():
+    session = list(ta._BEAT_THIS_SESSION)
+    before = {}
+    for name in flags:
         if not hasattr(ta, name):
             raise SystemExit(f"no engine flag {name}")
+        before[name] = getattr(ta, name)
+    ta._BEAT_THIS_SESSION[:] = [None]
+    for name, value in flags.items():
+        setattr(ta, name, value)
+    return session, before
+
+
+def _restore_flags(saved: tuple[list, dict]) -> None:
+    import overtone as ta
+    session, before = saved
+    ta._BEAT_THIS_SESSION[:] = session
+    for name, value in before.items():
         setattr(ta, name, value)
 
 
 def replay_one(job: tuple[str, dict, dict]) -> tuple[str, list | None, str | None]:
     """One audio's exported lines under ``flags``, or why it cannot be replayed."""
     audio, entry, flags = job
-    _set_flags(flags)
+    saved = _set_flags(flags)
+    try:
+        return _replay(audio, entry)
+    finally:
+        # Called in-process (the tests), the engine is left as it was found.
+        _restore_flags(saved)
+
+
+def _replay(audio: str, entry: dict) -> tuple[str, list | None, str | None]:
     import corpus_b
     import overtone_rust
     capture = entry.get("replay") or {}
