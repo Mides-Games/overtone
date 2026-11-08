@@ -949,6 +949,27 @@ class ReplayTests(unittest.TestCase):
                 self.assertIsNone(why)
                 self.assertTrue(replay.same_lines(lines, result["lines"]), (lines, result["lines"]))
 
+    def test_the_kept_report_lives_in_its_own_file_not_in_memory(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import corpus_b
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "app-song.json"
+            result = {"lines": [[0.0, 120.0, 4]], "replay": {"returncode": 0, "report": {"x": [1.0]}}}
+            corpus_b.write_cache(path, result)
+            self.assertNotIn("replay", result)          # the caller keeps no report in memory
+            self.assertNotIn("replay", json.loads(path.read_text(encoding="utf-8")))
+            cached = corpus_b.read_cache(path)
+            self.assertEqual(corpus_b.read_replay(cached)["report"], {"x": [1.0]})
+            # A cache written with the report inline moves it out when read.
+            old = Path(tmp) / "app-old.json"
+            old.write_text(json.dumps({"format": corpus_b.CACHE_FORMAT, "lines": [],
+                                       "replay": {"returncode": 3}}), encoding="utf-8")
+            cached = corpus_b.read_cache(old)
+            self.assertNotIn("replay", cached)
+            self.assertEqual(corpus_b.read_replay(cached), {"returncode": 3})
+
     def test_steps_that_need_the_audio_say_so(self):
         import overtone_rust
         with self.assertRaises(overtone_rust.ReplayMissing):

@@ -20,6 +20,25 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · A run keeps one song's Rust report in memory at a time
+
+### Fixed
+
+- The first server runs with the replay cache (`1cbcd08`) lost variable anime dev: the
+  process pool's worker was killed (BrokenProcessPool, peak 3.7 GB) because every
+  song's kept Rust report (attacks and onset envelope as Python lists) stayed in the
+  run's memory until the bundle was written. Each report now goes to its own gzipped
+  file beside the cached analysis as soon as it arrives (`corpus_b.replay_path`), a
+  cache written the old way moves its report out when read, and the bundle is written
+  one audio at a time.
+
+### Measured
+
+- Not re-measured on the server yet; the next deploy's runs show the peak. Local: the
+  replay and measurement-run tests pass, and a stage run writes its bundle.
+
+---
+
 ## Unreleased — 2026-11-08 · The engine says when it is sure (uncalibrated)
 
 ### Changed
