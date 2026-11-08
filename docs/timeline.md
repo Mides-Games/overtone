@@ -20,6 +20,23 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · A replay leaves the engine as it found it
+
+### Fixed
+
+- The VPS suite on `1cbcd08` failed `BeatThisTests.test_it_hears_a_click_track_on_its_beats`
+  (and the same test failed in a local full run, wrongly put down to load): `replay_one`,
+  run in-process by `ReplayTests`, set the Beat This! session to none and the flags it
+  replayed, and never put them back, so every later test ran without the model.
+  `replay_one` now restores both; a test checks it.
+
+### Measured
+
+- Local: ReplayTests then BeatThisTests in one process pass; facts and parity pass. The
+  next deploy's VPS suite confirms.
+
+---
+
 ## Unreleased — 2026-11-08 · A run keeps one song's Rust report in memory at a time
 
 ### Fixed
