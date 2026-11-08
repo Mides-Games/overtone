@@ -565,11 +565,88 @@ def _merge_steady_lines(analysis: Analysis) -> Analysis:
     return _with_lines(analysis, merged, beats=red_lines._beats_of(merged, float(analysis.duration)))
 
 
+def _fix_offbeat_phase(analysis: Analysis) -> Analysis:
+    """Red lines locked half a beat off moved onto the beat (PHASE_CHECK).
+
+    A run of lines on one grid (each line on the previous one's beats, at its
+    BPM within 1 %) is judged as one: the attack weight within
+    PHASE_CHECK_WINDOW of its half beats against that on its beats. Past
+    PHASE_CHECK_MARGIN times, every line of the run moves by half its beat,
+    forward unless that leaves its span; a manual line is never judged or
+    moved and ends the run it is in."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not params.PHASE_CHECK or not points:
+        return analysis
+    raw = getattr(analysis, "attack_times", None)
+    times = np.zeros(0) if raw is None else np.asarray(raw, dtype=float) * 1000.0
+    raw = getattr(analysis, "attack_weights", None)
+    weights = np.ones(times.size) if raw is None else np.asarray(raw, dtype=float)
+    if weights.size != times.size:
+        weights = np.ones(times.size)
+    if times.size < params.PHASE_CHECK_MIN_ATTACKS:
+        return analysis
+    end_ms = float(analysis.duration) * 1000.0
+    stops = [float(points[n + 1].offset_ms) if n + 1 < len(points) else end_ms
+             for n in range(len(points))]
+    runs, run = [], []
+    for n, p in enumerate(points):
+        if getattr(p, "manual", False):
+            if run:
+                runs.append(run)
+            run = []
+            continue
+        if run:
+            prev = points[run[-1]]
+            step = 60000.0 / prev.bpm
+            k = round((p.offset_ms - prev.offset_ms) / step)
+            same = (abs(p.bpm / prev.bpm - 1.0) <= 0.01
+                    and abs(prev.offset_ms + k * step - p.offset_ms) <= 0.1 * step)
+            if not same:
+                runs.append(run)
+                run = []
+        run.append(n)
+    if run:
+        runs.append(run)
+    window = params.PHASE_CHECK_WINDOW
+    moved = list(points)
+    for run in runs:
+        on = off = 0.0
+        count = 0
+        for n in run:
+            p = points[n]
+            inside = (times >= p.offset_ms) & (times < stops[n])
+            ph = np.mod((times[inside] - p.offset_ms) / (60000.0 / p.bpm), 1.0)
+            on += float(weights[inside][(ph < window) | (ph > 1.0 - window)].sum())
+            off += float(weights[inside][np.abs(ph - 0.5) < window].sum())
+            count += int(inside.sum())
+        if count < params.PHASE_CHECK_MIN_ATTACKS or off <= 0.0 or off <= params.PHASE_CHECK_MARGIN * on:
+            continue
+        for n in run:
+            p = points[n]
+            half = 30000.0 / p.bpm
+            low = float(moved[n - 1].offset_ms) if n else 0.0
+            if p.offset_ms + half < stops[n] - half:
+                offset = p.offset_ms + half
+            elif p.offset_ms - half > low:
+                offset = p.offset_ms - half
+            else:
+                continue
+            moved[n] = replace(p, offset_ms=float(offset))
+    if all(a is b for a, b in zip(moved, points)):
+        return analysis
+    lines = [(float(p.offset_ms), float(p.bpm)) for p in moved]
+    beats = red_lines._beats_of(lines, float(analysis.duration))
+    starts = np.array([o for o, _ in lines]) / 1000.0
+    which = np.clip(np.searchsorted(starts, beats, side="right") - 1, 0, len(lines) - 1)
+    return replace(analysis, points=moved, beats=beats,
+                   local_bpms=np.array([b for _, b in lines], dtype=float)[which])
+
+
 def _tidy_bpms(analysis: Analysis) -> Analysis:
     """The finished red lines at the BPMs _tidy_bpm reads (TIDY_BPM), after
-    the octave cap (OCTAVE_CAP) and steady merging (MERGE_STEADY_LINES):
-    every engine path ends here."""
-    analysis = _merge_steady_lines(_cap_octaves(analysis))
+    the octave cap (OCTAVE_CAP), the phase check (PHASE_CHECK) and steady
+    merging (MERGE_STEADY_LINES): every engine path ends here."""
+    analysis = _merge_steady_lines(_fix_offbeat_phase(_cap_octaves(analysis)))
     points = list(getattr(analysis, "points", None) or [])
     if not params.TIDY_BPM or not points or any(getattr(p, "manual", False) for p in points):
         return analysis

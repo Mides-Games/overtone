@@ -20,6 +20,30 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · A phase check for grids half a beat off
+
+### Changed
+
+- Roadmap 27.18: `_fix_offbeat_phase`, behind the new flag `PHASE_CHECK` (off), runs
+  in `_tidy_bpms` right after the octave cap and before steady merging (so a merged
+  line keeps the corrected beat), so every engine path reaches it, and
+  `bench/replay.py --experiment phase-check` can score it on a stored run. A run
+  of red lines on one grid is judged as one: when the attack weight within 6 % of a
+  beat of its half beats outweighs that on its beats 1.5 times (PHASE_CHECK_MARGIN),
+  every line of the run moves by half a beat, forward unless that leaves its span.
+  Manual lines are never moved. Why: on the server's ranked stages of 2026-11-08,
+  2–7 % of maps missed the ranked timing with the right BPM and every beat between
+  the map's (145 BPM, ~207 ms off: half of 414 ms). The server experiment is
+  `phase-check`.
+
+### Measured
+
+- Built and off: not yet measured on the server. With the flag off and with it on
+  (run once, not committed) the suite, benchmark 24/24, bpm-snapshot 24/24, golden
+  27/27, coverage, measures, signatures, robustness, reference 24/24 and assisted read
+  the same: no synthetic fixture has a line half a beat off, so the check moves none.
+  Perf read SLOWER on `_ramp` under parallel load, master equally (A/B 2026-11-08); the
+  step itself takes 0.3 ms for one line and 43 ms for 300 over 6 minutes of attacks.
 ## Unreleased — 2026-11-08 · The tempo judge on by default
 
 ### Changed
