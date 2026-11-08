@@ -806,6 +806,19 @@ OCTAVE_CAP = True
 OCTAVE_CAP_BPM = 260.0
 
 
+#: A red line whose grid is locked half a beat off (PHASE_CHECK): the right
+#: BPM with every beat between the song's. The server's ranked stages of
+#: 2026-11-08 missed 2-7 % of maps that way (145 BPM, 207 ms off: half of 414).
+#: A run of lines on one grid moves by half a beat when the attacks within
+#: PHASE_CHECK_WINDOW (a share of the beat) of its half beats outweigh those
+#: on its beats PHASE_CHECK_MARGIN times. Off: built, not yet measured.
+PHASE_CHECK = False
+PHASE_CHECK_MARGIN = 1.5
+PHASE_CHECK_WINDOW = 0.06
+#: The fewest attacks a run needs before its phase is judged.
+PHASE_CHECK_MIN_ATTACKS = 8
+
+
 #: Decimals StepMania's tags are written with. Both are floats in the format
 #: and most hand-written files use three, but three decimals of a BPM is a
 #: coarser grid than this engine fits: on the pinned readings, rounding the

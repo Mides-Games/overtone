@@ -927,6 +927,53 @@ class OctaveCapTests(unittest.TestCase):
             self.assertIs(overtone._cap_octaves(b), b)
 
 
+class PhaseCheckTests(unittest.TestCase):
+    """PHASE_CHECK: a red line locked half a beat off moves onto the beat."""
+
+    BEAT = 60000.0 / 145
+
+    def _analysis(self, points, duration=40.0):
+        import overtone
+        times = np.arange(0.0, duration * 1000.0, self.BEAT)
+        weights = np.where(np.arange(times.size) % 4 == 0, 3.0, 1.0)
+        return overtone.Analysis(source="x", duration=duration, beats=np.zeros(0), local_bpms=np.zeros(0),
+                                 points=points, hop_length=512, sample_rate=44100, subdivision=1.0,
+                                 attack_times=times / 1000.0, attack_weights=weights, engine="legacy")
+
+    def test_a_line_half_a_beat_off_moves_onto_the_beat(self):
+        import overtone
+        a = self._analysis([TimingPoint(self.BEAT / 2, 145.0, 1.0, 0)])
+        with mock.patch.object(overtone, "PHASE_CHECK", True):
+            out = overtone._fix_offbeat_phase(a)
+        self.assertAlmostEqual(out.points[0].offset_ms, self.BEAT, delta=0.01)
+        self.assertEqual(out.points[0].bpm, 145.0)
+        self.assertGreater(out.beats.size, 0)
+
+    def test_a_run_of_lines_moves_as_one(self):
+        import overtone
+        points = [TimingPoint(self.BEAT / 2, 145.0, 1.0, 0), TimingPoint(self.BEAT / 2 + 40 * self.BEAT, 145.0, 1.0, 0)]
+        with mock.patch.object(overtone, "PHASE_CHECK", True):
+            out = overtone._fix_offbeat_phase(self._analysis(points))
+        for p in out.points:
+            self.assertAlmostEqual((p.offset_ms / self.BEAT) % 1.0, 0.0, delta=0.001)
+
+    def test_a_line_on_the_beat_is_left_alone(self):
+        import overtone
+        a = self._analysis([TimingPoint(0.0, 145.0, 1.0, 0)])
+        with mock.patch.object(overtone, "PHASE_CHECK", True):
+            self.assertIs(overtone._fix_offbeat_phase(a), a)
+
+    def test_the_switch_off_and_manual_lines_leave_it_alone(self):
+        import overtone
+        from dataclasses import replace
+        a = self._analysis([TimingPoint(self.BEAT / 2, 145.0, 1.0, 0)])
+        with mock.patch.object(overtone, "PHASE_CHECK", False):
+            self.assertIs(overtone._fix_offbeat_phase(a), a)
+        b = self._analysis([replace(TimingPoint(self.BEAT / 2, 145.0, 1.0, 0), manual=True)])
+        with mock.patch.object(overtone, "PHASE_CHECK", True):
+            self.assertIs(overtone._fix_offbeat_phase(b), b)
+
+
 class TidyBpmTests(unittest.TestCase):
     """A BPM is written with two decimals, as a ranked mapper writes it (2026-10-31)."""
 
