@@ -301,6 +301,10 @@ def score_song(song: dict, analysis: dict) -> list[dict]:
                     "lines": [[round(float(o), 1), round(float(b), 3)] for o, b in detected],
                     "d_map": d_map, "d_eng": d_eng, "bar_hits": bar_hits,
                     **({"message": analysis["message"]} if analysis.get("message") else {}),
+                    # Why the Rust core refused, where v3 answered instead (29.2).
+                    **({"rust_said": analysis["rust_said"]} if analysis.get("rust_said") else {}),
+                    **({"rust_refusal": [d.get("kind") for d in analysis["rust_diagnostics"]]}
+                       if analysis.get("rust_diagnostics") else {}),
                     **{k: analysis.get(k) for k in ("global_bpm", "octave_margin", "offbeat_ratio",
                                                     "residual_ms", "stability", "backend")}})
     return out
@@ -308,6 +312,26 @@ def score_song(song: dict, analysis: dict) -> list[dict]:
 
 #: How near a map's bar line an engine red line must start to count as on it.
 BAR_TOL_MS = 20.0
+
+
+def write_replay(path: Path, songs: list[dict], analyses: dict, payload: dict) -> None:
+    """The Rust core's own report per audio, beside the run's report, so the
+    conventions can be replayed without the audio (bench/replay.py, roadmap
+    29.1). Derived features only: attacks, sections, points, onset envelope.
+    An analysis cached before the replay was kept has none, and is named."""
+    import gzip
+    bundle: dict = {}
+    for song in songs:
+        analysis = analyses[song["id"]]
+        bundle.setdefault(song["audio_sha1"], {
+            "backend": analysis.get("backend"), "path": analysis.get("path"),
+            "duration_s": analysis.get("duration_s"), "lines": analysis.get("lines"),
+            "replay": analysis.get("replay")})
+    kept = sum(entry["replay"] is not None for entry in bundle.values())
+    meta = {k: payload[k] for k in ("stage", "engine", "fingerprint", "run")}
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        json.dump({"meta": meta, "audios": bundle}, handle)
+    print(f"  replay: {kept} of {len(bundle)} audios kept their Rust report ({path.name})")
 
 
 def lines_on_bars(reds, detected, duration_s: float) -> list[bool]:
@@ -722,6 +746,7 @@ def main(argv: list[str] | None = None) -> int:
                    "first": m["rows"][0], "rows": m["rows"]} for m in maps]}
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+    write_replay(out.with_name(f"{kind}-replay.json.gz"), songs, analyses, payload)
     if args.save_baseline:
         base_path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
         print(f"\n  baseline saved: {base_path}")

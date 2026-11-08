@@ -20,6 +20,30 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · Replayable runs, and why Rust refused
+
+### Changed
+
+- Roadmap 29.1: every stage run keeps, per audio, the Rust core's own report
+  (`overtone-cli analyze --full`: attacks, sections, points, onset envelope, or the
+  refusal with its diagnostics) and the beats Beat This! gave when a judge asked
+  (`<stage>-replay.json.gz` beside the report; on the server `GET
+  /api/v1/runs/<id>/replay`, `bench/remote.py replay <id>`). `bench/replay.py` rebuilds
+  each analysis from it, runs `overtone_rust.conventions` (the Python steps after the
+  core, split out of `_analyze` unchanged) under any experiment or `--set FLAG=VALUE`,
+  and scores before and after with `bench/rankable.py`, map by map, fixed and broken.
+  `--check` replays at the run's own flags and must reproduce its lines. Steps that need
+  the audio itself (the tempo judge, the Beat This! vote) say so and keep the run's
+  lines. Derived features only leave the server, never audio.
+- Roadmap 29.2: each map row carries `rust_said` and the refusal's diagnostic kinds
+  (`rust_refusal`) where v3 answered instead of the Rust core.
+
+### Measured
+
+- Not yet on the server: the bundles appear from the first run on this code (a new
+  engine fingerprint, so one full re-analysis). Locally, three fixtures (a tempo change,
+  a breakdown, a refusal) replay to the analysed lines exactly; the refusal keeps its
+  report and attacks.
 ## Unreleased — 2026-11-08 · The tempo judge skips audio it cannot read
 
 ### Fixed

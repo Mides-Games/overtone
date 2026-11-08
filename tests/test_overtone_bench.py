@@ -918,6 +918,48 @@ class MeasurementRunTests(unittest.TestCase):
         self.assertEqual(store.meta(meta["id"])["state"], "interrupted")
 
 
+class ReplayTests(unittest.TestCase):
+    """bench/replay.py: the conventions re-run on the Rust core's kept report
+    give the lines the run gave (roadmap 29.1)."""
+
+    def test_a_kept_report_replays_to_the_same_lines(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import corpus_b
+        import overtone_rust
+        import replay
+        cli = overtone_rust.find_cli()
+        if cli is None:
+            self.skipTest("overtone-cli is not built")
+        audio = Path(bench) / "audio"
+        for name in ("change-128-142.wav", "breakdown-175.wav", "_ambient.wav"):
+            with self.subTest(name):
+                result = corpus_b.analyse(str(audio / name), "rust", str(cli))
+                self.assertIn("returncode", result["replay"])
+                entry = {"backend": result.get("backend"), "lines": result["lines"],
+                         "replay": json.loads(json.dumps(result["replay"]))}
+                _, lines, why = replay.replay_one(("a", entry, {}))
+                if result["path"] == "refused":
+                    # A refusal keeps its report (29.3 reads its attacks) and is not replayed.
+                    self.assertEqual(result["replay"]["returncode"], 3)
+                    self.assertIn("evidence", result["replay"]["report"])
+                    self.assertIsNone(lines)
+                    continue
+                self.assertIsNone(why)
+                self.assertTrue(replay.same_lines(lines, result["lines"]), (lines, result["lines"]))
+
+    def test_steps_that_need_the_audio_say_so(self):
+        import overtone_rust
+        with self.assertRaises(overtone_rust.ReplayMissing):
+            analysis = mock.Mock(global_bpm=120.0)
+            with mock.patch.multiple("overtone", _fold_to_map_octave=lambda a, *x: a,
+                                     _snap_whole_bpm=lambda a, *x: a, _follow_drift=lambda a: a,
+                                     _change_points=lambda a: a,
+                                     _beat_this_session=lambda: object()):
+                overtone_rust.conventions(analysis, "", replay={})
+
+
 class RankableVerdictTests(unittest.TestCase):
     """bench/rankable.py: a map's verdict is its worst beat, never a mean."""
 

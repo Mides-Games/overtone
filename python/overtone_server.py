@@ -38,6 +38,7 @@ Endpoints (a browser's cookie or ``Authorization: Bearer <token>``):
     GET  /api/v1/runs/<id>             one run and the end of its log
     GET  /api/v1/runs/<id>/result      the tool's own JSON report
     GET  /api/v1/runs/<id>/log         the whole log, plain text
+    GET  /api/v1/runs/<id>/replay      the Rust core's reports per audio (gzipped JSON)
     POST /api/v1/runs/<id>/stop        cancel it, or end it while it runs
 """
 from __future__ import annotations
@@ -605,6 +606,8 @@ def make_handler(service: Service, token: str, log: bool = True,
                                "text/plain; charset=utf-8")
                 elif method == "GET" and parts[1:] == ["result"]:
                     self._reply(HTTPStatus.OK, service.runs.store.result(parts[0]))
+                elif method == "GET" and parts[1:] == ["replay"]:
+                    self._send(HTTPStatus.OK, service.runs.store.replay(parts[0]), "application/gzip")
                 elif method == "POST" and parts[1:] == ["stop"]:
                     stopped = service.runs.stop(parts[0])
                     self._reply(HTTPStatus.ACCEPTED if stopped else HTTPStatus.OK,

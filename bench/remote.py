@@ -16,6 +16,7 @@ http://127.0.0.1:8765: an SSH tunnel to it), with the token from
     python bench/remote.py show <id>
     python bench/remote.py wait <id>
     python bench/remote.py result <id> --out bench/.cache/remote/<id>.json
+    python bench/remote.py replay <id>                     # the Rust core's reports, for bench/replay.py
     python bench/remote.py diagnose <id> --compare <older id>   # which problems cost most
     python bench/remote.py stop <id>
     python bench/remote.py log <id> --grep FAIL            # the whole log, or its matching lines
@@ -47,6 +48,17 @@ class Remote:
         self.url = url.rstrip("/")
         self.token = token
         self.timeout = timeout
+
+    def raw(self, path: str) -> bytes:
+        request = urllib.request.Request(self.url + path,
+                                         headers={"Authorization": f"Bearer {self.token}"})
+        try:
+            with urllib.request.urlopen(request, timeout=max(self.timeout, 600.0)) as reply:
+                return reply.read()
+        except urllib.error.HTTPError as exc:
+            raise SystemExit(f"GET {path}: HTTP {exc.code}") from None
+        except urllib.error.URLError as exc:
+            raise SystemExit(f"Cannot reach {self.url} ({exc.reason}).") from None
 
     def text(self, path: str) -> str:
         request = urllib.request.Request(self.url + path,
@@ -163,6 +175,9 @@ def main(argv: list[str] | None = None) -> int:
     result = commands.add_parser("result", help="download a run's report")
     result.add_argument("id")
     result.add_argument("--out", help=f"where (default {CACHE}/<id>.json)")
+    replay = commands.add_parser("replay", help="download a stage run's replay bundle (bench/replay.py)")
+    replay.add_argument("id")
+    replay.add_argument("--out", help=f"where (default {CACHE}/<id>-replay.json.gz)")
     diag = commands.add_parser("diagnose", help="a stage run's timing problems, worst first (bench/diagnose.py)")
     diag.add_argument("id")
     diag.add_argument("--compare", metavar="ID", help="an older run: each share's change beside it")
@@ -245,6 +260,13 @@ def main(argv: list[str] | None = None) -> int:
         out.write_text(json.dumps(report, indent=1), encoding="utf-8")
         print(f"written: {out} ({len(report.get('maps', []))} maps)")
         _summary(report.get("summary"))
+        return 0
+    if args.command == "replay":
+        data = remote.raw(f"/api/v1/runs/{args.id}/replay")
+        out = Path(args.out) if args.out else CACHE / f"{args.id}-replay.json.gz"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
+        print(f"written: {out} ({len(data) / 1e6:.1f} MB)")
         return 0
     if args.command == "diagnose":
         import diagnose
