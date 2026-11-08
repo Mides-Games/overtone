@@ -938,6 +938,44 @@ class TidyBpmTests(unittest.TestCase):
             self.assertEqual(overtone._tidy_bpm(233.433, 4.0), 233.4)
 
 
+class MergeSteadyLinesTests(unittest.TestCase):
+    """MERGE_STEADY_LINES: a steady song followed too closely is one line again."""
+
+    @staticmethod
+    def _analysis(lines, meters=None, manual=False):
+        analysis = Analysis("x.wav", 120.0, np.zeros(0), np.zeros(0), [], 128, 44100, 1.0)
+        analysis.points = [TimingPoint(o, b, 1.0, 0, meter=(meters or [4] * len(lines))[n], manual=manual)
+                           for n, (o, b) in enumerate(lines)]
+        return analysis
+
+    def test_near_equal_lines_become_one_whole_bpm_line(self):
+        import overtone
+        a = self._analysis([(1736.0, 142.0), (20750.0, 142.12), (38481.0, 142.0), (56439.0, 141.98)])
+        with mock.patch.object(overtone, "MERGE_STEADY_LINES", True):
+            out = overtone._merge_steady_lines(a)
+        self.assertEqual([(p.offset_ms, p.bpm) for p in out.points], [(1736.0, 142.0)])
+        self.assertAlmostEqual(out.global_bpm, 142.0)
+        self.assertAlmostEqual(float(out.beats[1] - out.beats[0]), 60.0 / 142.0, places=9)
+
+    def test_half_and_decimal_tempi_are_kept_as_read(self):
+        import overtone
+        self.assertEqual(overtone._steady_line([(0.0, 187.52), (9000.0, 187.47)]), [(0.0, 187.5)])
+        self.assertEqual(overtone._steady_line([(0.0, 94.31), (9000.0, 94.29)]), [(0.0, 94.3)])
+
+    def test_real_changes_meters_and_manual_lines_are_left_alone(self):
+        import overtone
+        self.assertIsNone(overtone._steady_line([(0.0, 140.0), (9000.0, 142.0)]))
+        self.assertIsNone(overtone._steady_line([(0.0, 140.0)]))
+        with mock.patch.object(overtone, "MERGE_STEADY_LINES", True):
+            meters = self._analysis([(0.0, 140.0), (9000.0, 140.05)], meters=[4, 3])
+            self.assertIs(overtone._merge_steady_lines(meters), meters)
+            manual = self._analysis([(0.0, 140.0), (9000.0, 140.05)], manual=True)
+            self.assertIs(overtone._merge_steady_lines(manual), manual)
+        off = self._analysis([(0.0, 140.0), (9000.0, 140.05)])
+        with mock.patch.object(overtone, "MERGE_STEADY_LINES", False):
+            self.assertIs(overtone._merge_steady_lines(off), off)
+
+
 if __name__ == "__main__":
     unittest.main()
 

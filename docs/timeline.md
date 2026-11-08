@@ -20,6 +20,49 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · A steady song written as one red line
+
+### Changed
+
+- `MERGE_STEADY_LINES` (on): when every red line the engine wrote sits within 0.5 % of
+  their median BPM (142.0 / 142.12 / 141.98 for one 142), the song is one steady tempo
+  followed too closely, and it is written as one line through the first line's beat,
+  at the whole BPM (or .5) when that is within 0.15 of the median, else at the median
+  with two decimals. Lines with different meters and any manual line are left alone.
+  It runs in `_tidy_bpms`, the step every engine path ends in, so the app engine
+  (Rust plus the osu! conventions) gets it too. Experiment `merge-steady` on the server.
+
+### Fixed
+
+- Steady anime songs read as several near-equal lines drifted 13–20 ms off the ranked
+  map's single line over a few minutes, which the rankable verdict counts as a miss.
+
+### Measured
+
+Offline, on the server's runs of 2026-11-08 (`6118909`, app engine), with the step's
+own `_steady_line` applied to each map's engine lines and scored by `bench/rankable.py`:
+
+| Stage | Split | Maps touched | Rankable maps | Rankable songs | Fixed / broken |
+|---|---|---:|---:|---:|---:|
+| bands-variable | dev | 45 | 43.5 -> 45.1 % | 36.9 -> 39.3 % | 11 / 0 |
+| bands-variable | held out | 6 | 50.9 -> 50.9 % | 41.5 -> 41.5 % | 0 / 0 |
+| anime-variable | dev | 62 | 22.9 -> 22.9 % | 21.1 -> 21.1 % | 0 / 0 |
+| anime-variable | held out | 12 | 30.6 -> 30.6 % | 27.1 -> 27.1 % | 0 / 0 |
+| anime-single | dev | 99 | 71.0 -> 72.7 % | 71.1 -> 73.2 % | 47 / 0 |
+| anime-single | held out | 87 | 70.6 -> 72.2 % | 67.5 -> 69.0 % | 21 / 0 |
+
+- The rule reads only the engine's lines, never the map. No rankable map was lost on
+  any stage or split. A server run of the `merge-steady` experiment end to end is
+  still to come; the step is the last before BPM tidying, so the offline replay is
+  the same lines the engine would write.
+- Verification (2026-11-08, local, flag on): unittest 632 pass; benchmark 24/24,
+  median 0.0000 BPM / 0.14 ms; bpm-snapshot 24/24 unchanged; golden 27/27 stage for
+  stage; coverage, measures, signatures, robustness, reference 24/24, assisted (70
+  sections) and perf pass; fixtures 38/38, parity, facts and fuzz (3000 mutants, no
+  crash) pass. No Rust code changed.
+
+---
+
 ## Unreleased — 2026-11-08 · A rankable verdict per map, decided by its worst beat
 
 ### Changed
