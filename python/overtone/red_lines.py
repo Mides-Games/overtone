@@ -501,11 +501,13 @@ def _beat_this_tempo(y: np.ndarray, sr: int) -> float | None:
 
 def _piecewise_segments(beats_ms: np.ndarray, index: np.ndarray | None = None,
                         sigma_ms: float | None = None,
-                        least: int | None = None) -> list[tuple[int, int, float, float]]:
+                        least: int | None = None,
+                        penalty: float | None = None) -> list[tuple[int, int, float, float]]:
     """(first, end, period ms, start ms) per steady stretch of the beats, by
     optimal partitioning; each stretch holds PIECEWISE_MIN_BEATS or more.
     ``index`` gives each beat's number on the grid when it is known (gaps
-    allowed); otherwise it is read from the local beat spacing."""
+    allowed); otherwise it is read from the local beat spacing. ``penalty``
+    is a new stretch's cost in squared spreads (PIECEWISE_PENALTY when None)."""
     t = np.asarray(beats_ms, dtype=float)
     n = t.size
     least = params.PIECEWISE_MIN_BEATS if least is None else least
@@ -527,7 +529,8 @@ def _piecewise_segments(beats_ms: np.ndarray, index: np.ndarray | None = None,
     sxx = np.concatenate([z, np.cumsum(x * x)])
     sxr = np.concatenate([z, np.cumsum(x * r)])
     srr = np.concatenate([z, np.cumsum(r * r)])
-    penalty = params.PIECEWISE_PENALTY * (params.PIECEWISE_SIGMA_MS if sigma_ms is None else sigma_ms) ** 2
+    penalty = ((params.PIECEWISE_PENALTY if penalty is None else penalty)
+               * (params.PIECEWISE_SIGMA_MS if sigma_ms is None else sigma_ms) ** 2)
     best = np.full(n + 1, np.inf)
     best[0] = 0.0
     back = np.zeros(n + 1, dtype=int)
@@ -626,6 +629,306 @@ def _change_points(analysis: Analysis) -> Analysis:
     new = _attack_rms_ms(_beats_of(lines, float(analysis.duration)), times, weights)
     if not new < params.CHANGE_GAIN * old:
         return analysis
+    return phrases._with_lines(analysis, lines, beats=_beats_of(lines, float(analysis.duration)))
+
+
+def _strong_attacks(times_ms: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """Which attacks are strong where they stand: at least CHANGE_BEAT_STRONG
+    times the median weight within CHANGE_BEAT_LOCAL_S, so a quiet intro keeps
+    its own beats instead of losing them all to the chorus."""
+    reach = params.CHANGE_BEAT_LOCAL_S * 1000.0
+    lo = np.searchsorted(times_ms, times_ms - reach)
+    hi = np.searchsorted(times_ms, times_ms + reach, side="right")
+    return np.array([weights[i] >= params.CHANGE_BEAT_STRONG * float(np.median(weights[a:b]))
+                     for i, (a, b) in enumerate(zip(lo, hi))], dtype=bool)
+
+
+def _unwrapped_beats(times_ms: np.ndarray, weights: np.ndarray, offset: float,
+                     period: float) -> tuple[np.ndarray, np.ndarray]:
+    """(beat number, time ms) of the attacks on a line's beats, one per beat
+    (the strongest). The numbers are unwrapped outwards from where the line
+    fits best, each attack taken on the beat nearest the phase of the last few,
+    so a stretch at another tempo keeps counting its own beats as its phase
+    error against the line ramps past half a beat. No expected-beat follower:
+    the phase is read off the attacks as they are (CHANGE_POINTS' follower
+    lost the short changes)."""
+    n = times_ms.size
+    if n < 8:
+        return np.zeros(0), np.zeros(0)
+    x = (times_ms - offset) / period
+    err = np.abs(x - np.round(x))
+    run = np.convolve(err, np.ones(16) / 16.0, mode="same")
+    # The seed sits on the line itself, where its neighbours sit on it too: an
+    # off-beat seed would count the off-beats.
+    seed = int(np.argmin(np.where(err <= 0.1, run, np.inf)))
+    k = np.full(n, np.nan)
+    k[seed] = float(np.round(x[seed]))
+    for step in (1, -1):
+        # (beat, phase) of the last attacks taken; the phase is extrapolated
+        # along their slope, so a ramp read across a gap keeps its count.
+        recent = [(float(k[seed]), float(x[seed] - k[seed]))]
+        i = seed + step
+        while 0 <= i < n:
+            last_k, last_phase = recent[-1]
+            slope = 0.0
+            if len(recent) >= 3:
+                ks = np.array([b for b, _ in recent[-4:]])
+                ph = np.array([p for _, p in recent[-4:]])
+                if np.ptp(ks) > 0:
+                    slope = float(np.polyfit(ks, ph, 1)[0])
+            ref = float(np.median([p for _, p in recent[-3:]]))
+            beat = float(np.round(x[i] - ref))
+            ref += slope * (beat - last_k)
+            beat = float(np.round(x[i] - ref))
+            if abs(x[i] - beat - ref) <= 0.2:
+                k[i] = beat
+                recent.append((beat, float(x[i] - beat)))
+            i += step
+    on = np.isfinite(k)
+    k, t, w = k[on], times_ms[on], weights[on]
+    order = np.lexsort((-w, k))
+    first = np.concatenate([[True], np.diff(k[order]) != 0])
+    pick = order[first]
+    return k[pick], t[pick]
+
+
+def _anchored_period(m: np.ndarray, t: np.ndarray, cut: float) -> float:
+    """The period (ms) of a grid with a beat on ``cut`` that best fits the
+    attacks ``t`` on beats ``m`` counted from it; attacks off by more than a
+    fifth of a beat are left out of the fit."""
+    use = m != 0
+    if not use.any():
+        return float("nan")
+    period = float(np.sum(m[use] * (t[use] - cut)) / np.sum(m[use] ** 2))
+    for _ in range(2):
+        keep = use & (np.abs(t - cut - m * period) <= 0.2 * period)
+        if not keep.any():
+            break
+        period = float(np.sum(m[keep] * (t[keep] - cut)) / np.sum(m[keep] ** 2))
+    return period
+
+
+def _anchored_rms(m: np.ndarray, t: np.ndarray, cut: float, period: float) -> float:
+    """RMS (ms) of the attacks to that grid, each miss clipped at a fifth of a beat."""
+    if not m.size:
+        return 0.0
+    r = np.minimum(np.abs(t - cut - m * period), 0.2 * period)
+    return float(np.sqrt(np.mean(r * r)))
+
+
+def _hinge(u: np.ndarray, t: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+    """(knot time, period before, period after), |residual| ms, reach ms) of
+    two tempos meeting on beat 0 of ``u``, fitted freely on the attacks."""
+    reach = 0.2 * float(np.median(np.diff(t) / np.diff(u)))
+    x = np.column_stack([np.ones(u.size), np.minimum(u, 0), np.maximum(u, 0)])
+    coef, res = _robust_lstsq(x, t, reach)
+    return coef, res, reach
+
+
+def _knot_time(k: np.ndarray, t: np.ndarray, start: int, at: int, end: int) -> float:
+    """Where the two tempos meet on the cut's beat (ms), from the
+    CHANGE_BEAT_WINDOW beats either side: steadier than the one attack there."""
+    u = k[start:end] - k[at]
+    near = np.abs(u) <= params.CHANGE_BEAT_WINDOW
+    return float(_hinge(u[near], t[start:end][near])[0][0])
+
+
+def _place_cut(k: np.ndarray, t: np.ndarray, start: int, near: int, end: int) -> int | None:
+    """The attack-bearing beat within CHANGE_BEAT_REACH beats of a bend where
+    two tempos meeting on it explain the beats around the bend best."""
+    least = params.CHANGE_BEAT_MIN_BEATS
+    span = params.CHANGE_BEAT_WINDOW + params.CHANGE_BEAT_REACH
+    u0 = k[start:end] - k[near]
+    around = np.abs(u0) <= span
+    best, cost = None, float("inf")
+    for at in range(start, end):
+        if abs(k[at] - k[near]) > params.CHANGE_BEAT_REACH or at - start < least or end - at < least:
+            continue
+        u = (k[start:end] - k[at])[around]
+        if int((u < 0).sum()) < 2 or int((u > 0).sum()) < 2:
+            continue
+        coef, res, reach = _hinge(u, t[start:end][around])
+        if not (coef[1] > 0 and coef[2] > 0):
+            continue
+        sse = float(np.sum(np.minimum(res, reach) ** 2))
+        if sse < cost:
+            best, cost = at, sse
+    return best
+
+
+def _robust_lstsq(x: np.ndarray, t: np.ndarray, reach: float) -> tuple[np.ndarray, np.ndarray]:
+    """(coefficients, |residual| ms) of t ~ x, refitted twice without the
+    attacks further than ``reach`` ms off."""
+    coef = np.linalg.lstsq(x, t, rcond=None)[0]
+    for _ in range(2):
+        keep = np.abs(t - x @ coef) <= reach
+        if int(keep.sum()) <= x.shape[1]:
+            break
+        coef = np.linalg.lstsq(x[keep], t[keep], rcond=None)[0]
+    return coef, np.abs(t - x @ coef)
+
+
+def _cut_holds(k: np.ndarray, t: np.ndarray, start: int, at: int, end: int,
+               sigma: float) -> tuple[bool, float]:
+    """(kept, worst own/shared ratio) for a cut, judged on the CHANGE_BEAT_WINDOW
+    beats either side of it: a bend there (one tempo each side, meeting on the
+    cut's beat) fits each side better than one tempo through both by
+    CHANGE_BEAT_GAIN, each side is steady, the step is CHANGE_BEAT_MIN_STEP or
+    more, and where a side runs on, its next window out keeps its tempo. Free
+    fits, not ones pinned on the cut's attack: one attack's jitter tilts both
+    sides apart by more than a small change."""
+    window = params.CHANGE_BEAT_WINDOW
+    u = k[start:end] - k[at]
+    tt = t[start:end]
+    near = np.abs(u) <= window
+    un, tn = u[near], tt[near]
+    left, right = un < 0, un > 0
+    half = params.CHANGE_BEAT_MIN_BEATS // 2
+    if int(left.sum()) < half or int(right.sum()) < half:
+        return False, float("inf")
+    bend, own, reach = _hinge(un, tn)
+    _line, shared = _robust_lstsq(np.column_stack([np.ones(un.size), un]), tn, reach)
+    own, shared = np.minimum(own, reach), np.minimum(shared, reach)
+
+    def rms(r, side):
+        return float(np.sqrt(np.mean(r[side] ** 2)))
+
+    pl, pr = float(bend[1]), float(bend[2])
+    if not (pl > 0 and pr > 0):
+        return False, float("inf")
+    ratio = max(rms(own, left) / max(rms(shared, left), 1e-9),
+                rms(own, right) / max(rms(shared, right), 1e-9))
+    steady = max(rms(own, left), rms(own, right)) <= params.CHANGE_BEAT_STEADY * sigma
+    for side, inner in ((u < 0, pl), (u > 0, pr)):
+        outer = side & (np.abs(u) > window) & (np.abs(u) <= 2 * window)
+        if int(outer.sum()) >= params.CHANGE_BEAT_MIN_BEATS:
+            far = float(np.polyfit(u[outer], tt[outer], 1)[0])
+            steady = steady and abs(far - inner) <= params.CHANGE_BEAT_FLAT * abs(pl - pr)
+    step = abs(pl / pr - 1.0) >= params.CHANGE_BEAT_MIN_STEP
+    return bool(steady and step and ratio <= params.CHANGE_BEAT_GAIN), float(ratio)
+
+
+def _snap_beat_bpm(m: np.ndarray, t: np.ndarray, cut: float, period: float) -> float:
+    """The line's BPM at the whole, then the half BPM beside it where its
+    attacks agree (_snap_whole_bpm's slack, on the grid anchored at the cut),
+    else at two decimals."""
+    bpm = 60000.0 / period
+    grow, add = params.WHOLE_BPM_SLACK
+    own = _anchored_rms(m, t, cut, period)
+    hits = int(np.sum(np.abs(t - cut - m * period) <= 0.2 * period))
+    for tidy in (float(round(bpm)), round(bpm * 2.0) / 2.0):
+        if tidy <= 0 or abs(bpm - tidy) > params.WHOLE_BPM_REACH:
+            continue
+        p = 60000.0 / tidy
+        if (_anchored_rms(m, t, cut, p) <= own * grow + add
+                and int(np.sum(np.abs(t - cut - m * p) <= 0.2 * p)) >= 0.95 * hits):
+            return tidy
+    return round(bpm, 2)
+
+
+def _cuts_on_line(times_ms: np.ndarray, weights: np.ndarray, offset: float, bpm: float,
+                  lo: float, hi: float) -> list[tuple[float, float]] | None:
+    """The red lines one line's span [lo, hi) splits into where its strong
+    attacks change tempo, or None where they do not."""
+    span = (times_ms >= lo) & (times_ms < hi)
+    t_all, w_all = times_ms[span], weights[span]
+    if t_all.size < 4 * params.CHANGE_BEAT_MIN_BEATS:
+        return None
+    strong = _strong_attacks(t_all, w_all)
+    period = 60000.0 / bpm
+    k, t = _unwrapped_beats(t_all[strong], w_all[strong], offset, period)
+    n = k.size
+    least = params.CHANGE_BEAT_MIN_BEATS
+    if n < 2 * least:
+        return None
+    # The attacks' own spread, from second differences (a tempo ramp's are 0).
+    slope, icpt = np.polyfit(k, t, 1)
+    r = t - (icpt + slope * k)
+    d2 = r[2:] - 2.0 * r[1:-1] + r[:-2]
+    spread = 1.4826 * float(np.median(np.abs(d2 - np.median(d2)))) / np.sqrt(6.0) if d2.size else 0.0
+    sigma = max(spread, params.CHANGE_BEAT_SIGMA_MS)
+    segments = _piecewise_segments(t, index=k, sigma_ms=sigma, least=least,
+                                   penalty=params.CHANGE_BEAT_BIC * float(np.log(n)))
+    if len(segments) < 2:
+        return None
+    rel = k - k[0]
+    bends = [int(np.searchsorted(rel, first)) for first, *_ in segments[1:]]
+    cuts: list[int] = []
+    for i, near in enumerate(bends):
+        start = cuts[-1] if cuts else 0
+        end = bends[i + 1] if i + 1 < len(bends) else n
+        at = _place_cut(k, t, start, near, end)
+        if at is not None and (not cuts or at > cuts[-1]):
+            cuts.append(at)
+    # Drop the weakest failing cut until every cut left holds.
+    while cuts:
+        verdicts = []
+        for i, at in enumerate(cuts):
+            start = cuts[i - 1] if i else 0
+            end = cuts[i + 1] if i + 1 < len(cuts) else n
+            verdicts.append(_cut_holds(k, t, start, at, end, sigma))
+        failing = [i for i, (ok, _ratio) in enumerate(verdicts) if not ok]
+        if not failing:
+            break
+        cuts.pop(max(failing, key=lambda i: verdicts[i][1]))
+    if not cuts:
+        return None
+    lines: list[tuple[float, float]] = []
+    bounds = [0, *cuts, n]
+    knots = [_knot_time(k, t, bounds[i], at, bounds[i + 2]) for i, at in enumerate(cuts)]
+    for j in range(len(bounds) - 1):
+        a, b = bounds[j], bounds[j + 1]
+        if j == 0:
+            # The first stretch is counted back from the first cut, its line on
+            # the first beat it has an attack on.
+            cut = knots[0]
+            m, tt = k[a:b + 1] - k[cuts[0]], t[a:b + 1]
+        else:
+            cut = knots[j - 1]
+            m, tt = k[a:b] - k[a], t[a:b]
+        p = _anchored_period(m, tt, cut)
+        if not (np.isfinite(p) and p > 0):
+            return None
+        tidy = _snap_beat_bpm(m, tt, cut, p)
+        if j == 0:
+            step = 60000.0 / tidy
+            back = max(1, round((cut - float(t[0])) / step))
+            lines.append((cut - back * step, tidy))
+        else:
+            lines.append((cut, tidy))
+    return lines
+
+
+def _change_on_beat(analysis: Analysis) -> Analysis:
+    """Each precision red line split where its strong attacks change tempo,
+    the new lines on the beat the change starts (CHANGE_ON_BEAT); the
+    analysis as it was otherwise."""
+    if not params.CHANGE_ON_BEAT:
+        return analysis
+    points = list(getattr(analysis, "points", None) or [])
+    if (not points or analysis.engine != "precision"
+            or any(getattr(p, "manual", False) for p in points)):
+        return analysis
+    times = np.asarray(analysis.attack_times, dtype=float) * 1000.0
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    if times.size != weights.size or times.size < 4 * params.CHANGE_BEAT_MIN_BEATS:
+        return analysis
+    order = np.argsort(times, kind="stable")
+    times, weights = times[order], weights[order]
+    duration_ms = float(analysis.duration) * 1000.0
+    lines, changed = [], False
+    for n, point in enumerate(points):
+        lo = -np.inf if n == 0 else point.offset_ms
+        hi = points[n + 1].offset_ms if n + 1 < len(points) else duration_ms + 1.0
+        split = _cuts_on_line(times, weights, point.offset_ms, point.bpm, lo, hi)
+        if split is None:
+            lines.append((float(point.offset_ms), float(point.bpm)))
+        else:
+            lines.extend(split)
+            changed = True
+    if not changed:
+        return analysis
+    lines = _merge_lines(sorted(lines))
     return phrases._with_lines(analysis, lines, beats=_beats_of(lines, float(analysis.duration)))
 
 
