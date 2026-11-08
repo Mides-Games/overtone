@@ -92,10 +92,18 @@ Si el paso 1 no trae su test (unitario o gate), volver al paso 1.
 
   ```powershell
   .venv/Scripts/python.exe bench/stages.py bands-variable --engine python --cohort bench/accuracy.local.json
-  .venv/Scripts/python.exe bench/accuracy_audit.py bench/accuracy.local.json --json bench/.cache/accuracy/audit.json
+  .venv/Scripts/python.exe bench/accuracy_audit.py bench/accuracy.local.json --pairing --json bench/.cache/accuracy/audit.json
   .venv/Scripts/python.exe bench/accuracy_manifest.py freeze <reporte ranked posterior> bench/accuracy-confirm.local.json --songs-root "C:\osu!\Songs" --confirmation --exclude bench/accuracy.local.json
   .venv/Scripts/python.exe bench/accuracy_compare.py <base> <candidato> --split holdout
   ```
+
+  Los reportes guardan `evaluation_fingerprint` aparte de la huella del motor:
+  si cambia el evaluador, vuelve a puntuar ambos runs antes de compararlos.
+  Los intervalos remuestrean grupos completos de audio/set (`split_key`),
+  conservando el promedio por audio; un solo grupo independiente no tiene IC.
+  Verifica también que la unión de las cohortes no reparta una grabación o set
+  entre dev y holdout. La coincidencia entre dificultades no prueba alineación
+  con el audio ni permite excluir automáticamente los desacuerdos del score.
 
   Para distinguir el offset fijo del tempo local incorrecto en mapas con muchas
   líneas, ejecuta el diagnóstico robusto por sección:

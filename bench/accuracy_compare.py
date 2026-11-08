@@ -11,6 +11,11 @@ from pathlib import Path
 
 import numpy as np
 
+if __package__:
+    from .accuracy_stats import clustered_mean_interval
+else:
+    from accuracy_stats import clustered_mean_interval
+
 
 def dense(row: dict) -> bool:
     return row["map_lines"] >= 20 or bool(row.get("duration_s") and
@@ -31,6 +36,8 @@ def compare_reports(baseline: dict, candidate: dict, split: str = "holdout") -> 
         raise ValueError("both reports must be ranked-only")
     if baseline["stage"]["id"] != candidate["stage"]["id"]:
         raise ValueError("reports must use the same stage")
+    if baseline.get("evaluation_fingerprint") != candidate.get("evaluation_fingerprint"):
+        raise ValueError("reports must use the same evaluation code; rescore both")
     if (not baseline.get("split_rule") or baseline["split_rule"] != candidate.get("split_rule")
             or baseline.get("holdout_share") != candidate.get("holdout_share")):
         raise ValueError("reports must use the same content-based split rule")
@@ -54,6 +61,8 @@ def compare_reports(baseline: dict, candidate: dict, split: str = "holdout") -> 
                 raise ValueError(f"missing or changed {field}: {key}")
         if row["map_lines"] != other["map_lines"] or dense(row) != dense(other):
             raise ValueError(f"reference cohort changed: {key}")
+        if row.get("split_key", row["audio_sha1"]) != other.get("split_key", other["audio_sha1"]):
+            raise ValueError(f"independent group changed: {key}")
         within_5ms(row)
         within_5ms(other)
 
@@ -77,13 +86,14 @@ def compare_reports(baseline: dict, candidate: dict, split: str = "holdout") -> 
         values = np.asarray([clusters[k] for k in sorted(clusters)], dtype=float)
         b_scores, c_scores = values[:, 0] / values[:, 2], values[:, 1] / values[:, 2]
         delta = c_scores - b_scores
-        ci = None
-        if len(delta) >= 2:
-            rng = np.random.default_rng(2713)
-            draws = np.mean(rng.choice(delta, size=(10000, len(delta)), replace=True), axis=1)
-            ci = np.quantile(draws, [.025, .975]).tolist()
+        group_of = {r["audio_sha1"]: r.get("split_key", r["audio_sha1"])
+                    for r in before.values()}
+        observations = [(float(score), group_of[audio])
+                        for audio, score in zip(sorted(clusters), delta)]
+        ci = clustered_mean_interval(observations, seed=2713)
         result["groups"][label] = {
             "audios": len(values), "reference_lines": int(values[:, 2].sum()),
+            "independent_groups": len({group for _, group in observations}),
             "baseline_macro": float(b_scores.mean()), "candidate_macro": float(c_scores.mean()),
             "delta_macro": float(delta.mean()), "delta_ci95": ci,
             "positive_interval": ci is not None and ci[0] > 0,

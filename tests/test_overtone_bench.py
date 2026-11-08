@@ -401,6 +401,11 @@ class MeasurementRunTests(unittest.TestCase):
         self.assertEqual(summary["dense_redline_within_5ms"], 29 / 40)
         self.assertEqual(summary["dense_song_macro_within_5ms"], 0.725)
         self.assertEqual(len(summary["dense_song_macro_ci95"]), 2)
+        dense_a["split_key"] = dense_b["split_key"] = "shared-set"
+        grouped = stages.summarise([dense_a, dense_b], 0.0)
+        self.assertEqual(grouped["dense_independent_groups"], 1)
+        self.assertIsNone(grouped["dense_song_macro_ci95"])
+        self.assertEqual(grouped["dense_song_macro_within_5ms"], .725)
 
     def test_accuracy_manifest_freezes_and_verifies_file_identity(self):
         bench = str(Path(__file__).resolve().parent.parent / "bench")
@@ -503,6 +508,86 @@ class MeasurementRunTests(unittest.TestCase):
                    (("a" * 40, "dev"), ("b" * 40, "holdout"))]
         self.assertEqual(audit({"entries": entries})["sets_crossing_splits"], 1)
 
+    def test_pairing_audit_names_the_grid_the_onsets_support(self):
+        import numpy as np
+        from bench.accuracy_audit import grid_alignment, pairing_audit, pairing_verdict
+        frame_ms, seconds = 1.0, 30
+        clicks = np.zeros(seconds * 1000)
+        clicks[::500] = 1.0                       # a click on every 120 BPM beat from 0 ms
+        on_beat = np.arange(0, seconds * 1000, 500.0)
+        aligned = grid_alignment(clicks, frame_ms, on_beat)
+        late = grid_alignment(clicks, frame_ms, on_beat + 20)
+        self.assertEqual(aligned["best_offset_ms"], 0)
+        self.assertEqual(late["best_offset_ms"], -20)
+        self.assertTrue(aligned["decisive"] and late["decisive"])
+        self.assertEqual(pairing_verdict(aligned, late, 0)[0], "left")
+        self.assertEqual(pairing_verdict(late, aligned, 0)[0], "right")
+        # judged against the cohort's lead, not 0 ms: a lead of -20 favours the late grid
+        self.assertEqual(pairing_verdict(aligned, late, -20)[0], "right")
+        self.assertEqual(pairing_verdict(aligned, late, -10)[0], "tie")
+        flat = grid_alignment(np.ones(seconds * 1000), frame_ms, on_beat)
+        self.assertFalse(flat["decisive"])
+        self.assertEqual(pairing_verdict(aligned, flat, 0)[0], "ambiguous")
+        self.assertEqual(grid_alignment(clicks, frame_ms, on_beat[:3])["status"], "unscorable")
+        self.assertEqual(grid_alignment(np.zeros(seconds * 1000), frame_ms, on_beat)["status"],
+                         "unscorable")
+
+        from bench.accuracy_audit import (attack_curve, ATTACK_FRAME_MS, offset_density,
+                                          pairing_posterior, validate_shifts)
+        rng = np.random.default_rng(3)
+        reference = list(23 + rng.normal(0, 3, 200))     # agreeing maps: lead 23, sd 3 ms
+        pdf = offset_density(np.asarray(reference) - 23)
+        self.assertGreater(pairing_posterior(23, 38, 23, pdf), .99)   # 15 ms off: sure
+        self.assertAlmostEqual(pairing_posterior(23, 23, 23, pdf), .5)
+        self.assertEqual(pairing_verdict(dict(aligned, best_offset_ms=23),
+                                         dict(late, best_offset_ms=38), 23, pdf)[0], "left")
+        self.assertEqual(pairing_verdict(dict(aligned, best_offset_ms=23),
+                                         dict(late, best_offset_ms=24), 23, pdf)[0], "tie")
+        check = validate_shifts(reference, list(23 + rng.normal(0, 3, 100)))
+        self.assertEqual(check["percent"]["0 ms"]["tie"], 100.0)      # no shift, no verdict
+        self.assertGreater(check["percent"]["15 ms"]["right"], 90)
+        self.assertLess(check["percent"]["15 ms"]["wrong"], 5)
+        self.assertEqual(validate_shifts(reference[:3], reference)["status"],
+                         "too few agreeing audios")
+        from bench.accuracy_audit import attack_curve, ATTACK_FRAME_MS
+        attacks = np.arange(0.5, 29.5, 0.5)
+        curve = attack_curve(attacks, np.ones(attacks.size), seconds)
+        self.assertEqual(int(np.argmax(curve)) * ATTACK_FRAME_MS, 500.0)  # peak on the start
+        fit = grid_alignment(curve, ATTACK_FRAME_MS, attacks * 1000 - 28)
+        self.assertEqual(fit["best_offset_ms"], 28)     # a grid 28 ms early reads +28
+
+        self._anime_song("pairing")
+        path = str(next((self.songs / "pairing").glob("*.osu")))
+        entries = [{"audio_sha1": sha, "osu_path": f"{path}" if sha == "a" * 40 else path + "#",
+                    "audio_path": "x.mp3", "duration_s": 24, "folder": "pairing", "split": "dev"}
+                   for sha in ("a" * 40, "c" * 40)]   # "c": the reference half (even)
+        pairs = [{"audio_sha1": "a" * 40, "left": path, "right": path, "status": "disagree"}]
+        reads = []
+        import bench.accuracy_audit as audit_module
+        beats = np.asarray(audit_module.cb.grid_beats(audit_module.ta.read_osu_red_lines(path), 24))
+        song = attack_curve(beats, np.ones(beats.size), 24)
+
+        def curve(audio_path):
+            reads.append(audio_path)
+            return song, ATTACK_FRAME_MS
+        import bench.accuracy_audit as audit_module
+        real_read = audit_module.ta.read_osu_red_lines
+        audit_module.ta.read_osu_red_lines = lambda p: real_read(p.rstrip("#"))
+        try:
+            result = pairing_audit({"entries": entries}, pairs, curve=curve)
+
+            def broken(_path):
+                raise RuntimeError("No audio file at x.mp3.")
+            failed = pairing_audit({"entries": entries}, pairs, curve=broken)
+        finally:
+            audit_module.ta.read_osu_red_lines = real_read
+        self.assertEqual(result["disagreeing_pairs"], 1)
+        self.assertEqual(result["cohort_lead"]["audios"], 1)   # only the agreeing audio
+        self.assertEqual(result["validation"]["status"], "too few agreeing audios")
+        self.assertEqual(len(reads), 2)                        # each audio decoded once
+        self.assertIn(result["pairing_results"][0]["verdict"], {"tie", "ambiguous"})
+        self.assertEqual(failed["verdicts"], {"unscorable": 1})
+
     def test_accuracy_comparison_pairs_audio_clusters_and_keeps_refusals(self):
         import copy
         from bench.accuracy_compare import compare_reports
@@ -518,6 +603,13 @@ class MeasurementRunTests(unittest.TestCase):
         measured = compare_reports(baseline, candidate)["groups"]["all"]
         self.assertEqual(measured["delta_macro"], 1.0)
         self.assertEqual(measured["delta_ci95"], [1.0, 1.0])
+        for report in (baseline, candidate):
+            for row in report["maps"]:
+                row["split_key"] = "shared-set"
+        measured = compare_reports(baseline, candidate)["groups"]["all"]
+        self.assertEqual(measured["independent_groups"], 1)
+        self.assertIsNone(measured["delta_ci95"])
+        self.assertFalse(measured["positive_interval"])
         candidate["maps"][1]["path"] = "refused"
         measured = compare_reports(baseline, candidate)["groups"]["all"]
         self.assertEqual(measured["delta_macro"], .5)
@@ -528,6 +620,10 @@ class MeasurementRunTests(unittest.TestCase):
         candidate = copy.deepcopy(baseline)
         candidate["maps"][0]["osu_sha1"] = "b" * 40
         with self.assertRaisesRegex(ValueError, "changed osu_sha1"):
+            compare_reports(baseline, candidate)
+        candidate = copy.deepcopy(baseline)
+        candidate["evaluation_fingerprint"] = "different-scorer"
+        with self.assertRaisesRegex(ValueError, "same evaluation code"):
             compare_reports(baseline, candidate)
 
     def test_change_points_are_matched_one_to_one_with_lost_and_phantom_counts(self):
@@ -543,6 +639,10 @@ class MeasurementRunTests(unittest.TestCase):
         self.assertEqual((result["precision"], result["recall"]), (0.5, 0.5))
         self.assertEqual(stages.octave_steps([(0, 120), (10000, 240), (20000, 120)]), 2)
         self.assertEqual(stages.octave_steps(truth), 0)
+        crowded = stages.change_point_counts(
+            [(0, 120), (10020, 130), (10040, 120)],
+            [(0, 120), (10035, 130), (10055, 120)], tolerance_ms=20)
+        self.assertEqual((crowded["tp"], crowded["fp"], crowded["fn"]), (2, 0, 0))
 
     def _ranked_report(self, folder: str) -> tuple[Path, list[dict]]:
         """A ranked stage report over one generated song, as stages.py writes it."""

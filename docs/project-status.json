@@ -1,10 +1,10 @@
 {
-  "snapshot_date": "2026-10-16",
+  "snapshot_date": "2026-11-07",
   "source_policy": "Curated from roadmap/timeline; dated required-row state wins when rollups are stale.",
   "nodes": [
     {
       "id": "project",
-      "label": "OVERTONE · PROJECT STATUS · 2026-10-16",
+      "label": "OVERTONE · PROJECT STATUS · 2026-11-07",
       "kind": "project",
       "status": "active",
       "source": "README.md",
@@ -180,7 +180,7 @@
       "status": "partial research",
       "source": "docs/07-roadmap.md",
       "line": 51,
-      "summary": "Phase 27 reset 2026-11-06 toward measured 85% dense-map accuracy. Song-disjoint content-hash splits, dense red-line and beat metrics, audio-clustered intervals, and private hash-manifest tools are built; the local ranked corpus, pairing audit and independent confirmation cohort remain."
+      "summary": "Three ranked dev/holdout cohorts locked and measured on 2026-11-07: 7,322 map rows, no cross-cohort song/set split conflicts. Raw held-out red-line within-5ms: bands 4.31%, variable anime 2.26%, single-line anime 1.01%. Duplicate-difficulty disagreements remain on 11 variable-anime and 13 single-line-anime audios; pairing curation and an untouched confirmation cohort remain required. No engine accuracy gain claimed."
     },
     {
       "id": "languages",
