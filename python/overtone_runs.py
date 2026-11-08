@@ -296,6 +296,57 @@ def _flag(request: dict, key: str) -> bool:
     return value
 
 
+#: Analysis caches kept per engine: the newest fingerprints only. Every engine
+#: change makes a new fingerprint and a full re-analysis, so older ones are
+#: never read again; on the measurement server they had grown to 2 GB on a
+#: disk 94 % full (2026-11-08). Regenerable: a run re-analyses what is gone.
+CACHE_KEEP_FINGERPRINTS = 3
+#: Stage runs that keep their replay bundle (bench/replay.py), newest first.
+REPLAY_KEEP_RUNS = 24
+_CACHE_FILE = re.compile(r"^(?P<engine>[a-z]+)-.*-(?P<fp>[0-9a-f]{16})(?:\.replay\.json\.gz|\.json)$")
+
+
+def prune_cache(folder: Path, keep: int = CACHE_KEEP_FINGERPRINTS) -> int:
+    """Delete cached analyses (and their kept Rust reports) of all but the
+    ``keep`` most recently written fingerprints of each engine; bytes freed."""
+    groups: dict[tuple[str, str], list[Path]] = {}
+    try:
+        entries = list(folder.iterdir())
+    except OSError:
+        return 0
+    for path in entries:
+        match = _CACHE_FILE.match(path.name)
+        if match and path.is_file():
+            groups.setdefault((match["engine"], match["fp"]), []).append(path)
+    newest: dict[str, list[tuple[float, str]]] = {}
+    for (engine, fp), files in groups.items():
+        newest.setdefault(engine, []).append((max(f.stat().st_mtime for f in files), fp))
+    freed = 0
+    for engine, ranked in newest.items():
+        for _, fp in sorted(ranked, reverse=True)[keep:]:
+            for path in groups[(engine, fp)]:
+                try:
+                    freed += path.stat().st_size
+                    path.unlink()
+                except OSError:
+                    continue
+    return freed
+
+
+def prune_replays(root: Path, keep: int = REPLAY_KEEP_RUNS) -> int:
+    """Delete the replay bundles of all but the ``keep`` newest runs; bytes freed."""
+    bundles = sorted((p for p in root.glob("*/replay.json.gz") if _RUN_ID.match(p.parent.name)),
+                     key=lambda p: p.parent.name, reverse=True)
+    freed = 0
+    for path in bundles[keep:]:
+        try:
+            freed += path.stat().st_size
+            path.unlink()
+        except OSError:
+            continue
+    return freed
+
+
 class RunStore:
     """Runs on disk, one folder each: meta.json, log.txt and, once the tool
     wrote it, result.json. Plain files, so a run outlives the server."""
@@ -588,6 +639,10 @@ def worker(argv: list[str] | None = None) -> int:
         replay = report.with_name(f"{report.stem}-replay.json.gz")
         if args.tool == "stages" and replay.is_file():
             Path(args.result).with_name("replay.json.gz").write_bytes(replay.read_bytes())
+    freed = sum(prune_cache(folder) for folder in (corpus_b.CACHE_DIR, single_bpm.CACHE_DIR))
+    freed += prune_replays(Path(args.result).parent.parent)
+    if freed:
+        print(f"overtone run: {freed / 1e6:.0f} MB of old caches and replay bundles removed")
     return int(code or 0)
 
 
