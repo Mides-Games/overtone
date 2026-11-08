@@ -128,7 +128,7 @@ The website and the bot are checked in their own repositories. A change here tha
 the site reads (the worker's result format, `docs/timeline.md`, which its changelog
 page is built from, `assets/logo-web.svg`, a file its "how it works" page cites) runs
 overtone-site's `pnpm --dir site/web test` with this checkout beside it
-(`OVERTONE_ENGINE`, or this folder as its sibling `Overtone-master`).
+(`OVERTONE_ENGINE`, or this folder as its sibling `overtone-engine-master`).
 
 The release build is a build step, not a gate: it builds a release's executables into
 `dist/release/<version>/` (gitignored), smoke-tests the frozen engine once, and publishes
@@ -295,7 +295,7 @@ docs/                     audit, stack evaluation, architecture, UI, DSP, roadma
   put `python/` on `sys.path`, so the engine is imported, never copied.
 - Rust: rustup 1.29 / rustc 1.98.1 on `x86_64-pc-windows-msvc`, with Visual Studio
   Build Tools 2022 17.14 supplying the linker. `Cargo.lock` is committed.
-- The local folder is `Overtone-master`, matching the `<Name>-master` convention used by
+- The local folder is `overtone-engine-master`, matching the `<Name>-master` convention used by
   the other projects here; the GitHub repository is `Mides-Games/overtone-engine`. Nothing in
   the build depends on either name — the bench resolves the repository root at runtime by
   walking up for `Cargo.toml` and `bench/golden/`, precisely so a rename cannot break it.

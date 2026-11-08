@@ -639,7 +639,7 @@ read right, and analysis time per song:
 
 - **The site's worker takes Stemsplit v0.2.0** (`deploy/eggs/stemsplit.py`, version and
   SHA-256): its U-Net runs in Stemsplit's own convolutions and builds only the stems asked
-  for (Mides-Games/Stemsplit#2). Same weights, byte for byte.
+  for (Mides-Games/stemsplit#2). Same weights, byte for byte.
 
 ### Measured
 
@@ -682,7 +682,7 @@ against the same code with the switch on (right 60.0 % dev, 51.4 % held out):
   Juliet 174 → 1 red line at 212, the reading #120 intended); suite 540 OK.
 - Stemsplit's drums-only separation (stems-drums' cost): 140 s wall, 273 s CPU at 206 %,
   2.07 GB for a 4.6-minute song on the server, building all four stems for one. Its fix
-  is Mides-Games/Stemsplit#2 (14.6 s and 0.93 GB on the owner's PC, not yet measured on
+  is Mides-Games/stemsplit#2 (14.6 s and 0.93 GB on the owner's PC, not yet measured on
   the server).
 
 ## Unreleased — 2026-11-01 · One grid for songs Beat This! hears at half in parts
