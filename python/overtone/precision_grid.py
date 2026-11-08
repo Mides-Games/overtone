@@ -1314,10 +1314,17 @@ def _local_bpm_curve(times: np.ndarray, weights: np.ndarray, sections: list[Grid
 
 def _precision_engine(y: np.ndarray, sr: int, min_delta: float, persistence: int,
                       prefer_map_bpm: bool, retime: bool,
-                      say: Callable[[str], None]) -> dict | None:
-    """Full precision pipeline. Returns None when the audio has no usable grid."""
+                      say: Callable[[str], None], evidence: dict | None = None) -> dict | None:
+    """Full precision pipeline. Returns None when the audio has no usable grid.
+
+    ``evidence``, when given, receives the attacks and the envelope as soon as
+    they are read, so a caller can try another fit on them after a refusal
+    (_segmented_engine) without detecting them again.
+    """
     say("Detecting attacks at sample resolution…")
     times, weights, env = _detect_attacks(y, sr, params.FIT_HOP, retime=retime)
+    if evidence is not None:
+        evidence.update(times=times, weights=weights, env=env)
     if times.size < 24:
         return None
 
@@ -1374,3 +1381,195 @@ def _precision_engine(y: np.ndarray, sr: int, min_delta: float, persistence: int
     return {"times": times, "weights": weights, "env": env, "sections": sections,
             "meter": meter_text, "meter_beats": bar_beats, "downbeat": downbeat,
             "atoms_per_beat": m, "first_sound": _first_on_grid(times, sections[0])}
+
+
+# -- segmented grid (SEGMENTED_GRID) -----------------------------------------
+
+def _stretch_holds(times: np.ndarray, weights: np.ndarray, section: GridSection) -> bool:
+    """Whether one constant grid explains a stretch's attacks: enough of their
+    weight on it, better than chance, and its inliers tight (SEGMENTED_GRID)."""
+    pad = 0.5 * section.period
+    window = (times >= section.start_s - pad) & (times <= section.end_s + pad)
+    w_times, w_weights = times[window], weights[window]
+    if w_times.size < 8:
+        return False
+    share, _coverage, rms = _grid_quality(w_times, w_weights, section.period,
+                                          section.phase, tol_ratio=0.11)
+    return (share >= params.SEGMENTED_MIN_SHARE and rms <= params.SEGMENTED_MAX_RMS_MS
+            and _pulse_log10p(w_times, section.period, section.phase) <= params.WEAK_PULSE_LOG10P)
+
+
+def _segment_anchor(times: np.ndarray, weights: np.ndarray
+                    ) -> tuple[float, float, float] | None:
+    """(window start, atomic period, phase) of the window whose own grid
+    explains its attacks best, among windows of SEGMENTED_WINDOW_S at half a
+    window's step. A window whose grid chance could explain is never one."""
+    width = params.SEGMENTED_WINDOW_S
+    lo, hi = float(times[0]), float(times[-1])
+    best: tuple[float, float, float, float] | None = None
+    for start in np.arange(lo, max(lo, hi - width) + 1e-9, 0.5 * width):
+        data_model.checkpoint()
+        stop = min(hi, float(start) + width)
+        seed = _seed_grid(times, weights, float(start), stop, widths=(width, 0.6 * width))
+        if seed is None:
+            continue
+        window = (times >= start) & (times <= stop)
+        if _pulse_log10p(times[window], *seed) > params.WEAK_PULSE_LOG10P:
+            continue
+        share, coverage, _rms = _grid_quality(times[window], weights[window], *seed)
+        score = share * (0.25 + 0.75 * coverage)
+        if best is None or score > best[0]:
+            best = (score, float(start), seed[0], seed[1])
+    return None if best is None else best[1:]
+
+
+def _cut_on_attack(times: np.ndarray, left: GridSection, right: GridSection) -> float:
+    """The new grid's beat nearest the settled cut that carries an attack: a
+    red line opens on a sound, never between two (SEGMENTED_GRID)."""
+    tol = float(min(0.06 * right.period, max(0.010, 4.0 * right.residual_ms / 1000.0)))
+    k = round((right.start_s - right.phase) / right.period)
+    for step in (0, 1, -1, 2, -2, 3, -3):
+        beat = right.phase + (k + step) * right.period
+        if beat <= left.start_s + left.period or beat >= right.end_s - right.period:
+            continue
+        if _nearest_attack(times, beat) <= tol:
+            return float(beat)
+    return float(right.start_s)
+
+
+def _segmented_engine(times: np.ndarray, weights: np.ndarray, env: np.ndarray, sr: int,
+                      min_delta: float, persistence: int,
+                      prefer_map_bpm: bool) -> dict | None:
+    """A precision grid per stretch, for a song no single grid holds.
+
+    The precision engine judges one grid over its whole anchor window and
+    refuses a song that changes tempo inside it. Here the beat octave is read
+    on the window that holds a grid best (_segment_anchor), the sections are
+    grown and merged as _precision_engine grows them, and each one keeps its
+    grid only where the grid holds (_stretch_holds). A stretch where none
+    holds and that has attacks is a gap, returned in ``"gaps"`` as (start,
+    end) seconds for the beat tracker; a quiet one belongs to the grid before
+    it. Cuts between grids settle as _settle_boundaries settles them and then
+    move to the nearest beat of the new grid that has an attack. Returns
+    _precision_engine's dict, plus ``"gaps"``, or None when no stretch holds.
+    """
+    if times.size < 24:
+        return None
+    anchor = _segment_anchor(times, weights)
+    if anchor is None:
+        return None
+    lo, atom_period, atom_phase = anchor
+    window = (times >= lo) & (times <= lo + params.SEGMENTED_WINDOW_S)
+    hints = _tempo_hints(env, sr, params.FIT_HOP)
+    m, first_class = _beat_from_atoms(times[window], weights[window], atom_period,
+                                      atom_phase, hints, prefer_map_bpm)
+    atom_sections = _grow_sections(times, weights, atom_period, atom_phase,
+                                   max(min_delta * m, 1e-3), max(2, persistence * m))
+    # Runs of touching sections that hold, split where a gap sits between them.
+    runs: list[list[GridSection]] = []
+    gap_before: list[bool] = []
+    gap_open = lead = False
+    for section in atom_sections:
+        data_model.checkpoint()
+        if _stretch_holds(times, weights, section):
+            if gap_open or not runs:
+                runs.append([])
+                gap_before.append(gap_open)
+            runs[-1].append(section)
+            gap_open = False
+            continue
+        inside = int(np.sum((times >= section.start_s) & (times < section.end_s)))
+        if inside < params.SEGMENTED_GAP_ATTACKS and runs and not gap_open:
+            runs[-1][-1] = replace(runs[-1][-1], end_s=section.end_s)
+        elif inside >= params.SEGMENTED_GAP_ATTACKS:
+            gap_open = True
+    if not runs:
+        return None
+    trailing = gap_open
+    # A grid grown into a stretch it does not hold (a ramp) is cut back to
+    # the last beat its own core still predicts.
+    for n, run in enumerate(runs):
+        if gap_before[n]:
+            run[0] = _trim_to_grid(times, weights, run[0], backwards=True)
+        if n + 1 < len(runs) or trailing:
+            run[-1] = _trim_to_grid(times, weights, run[-1], backwards=False)
+
+    centre = lo + 0.5 * params.SEGMENTED_WINDOW_S
+
+    def beat_level(section: GridSection) -> GridSection:
+        # The anchor's accent class, re-counted in this section's own frame,
+        # for the section the anchor window sits in; the others read theirs.
+        if (section.start_s <= centre <= section.end_s
+                and abs(section.period / atom_period - 1.0) < 0.03):
+            i = round((lo - section.phase) / section.period)
+            j = int(np.floor((section.phase + i * section.period - atom_phase) / atom_period + 0.5))
+            r = (first_class - j + i) % max(m, 1)
+        else:
+            pad = section.period
+            near = (times >= section.start_s - pad) & (times <= section.end_s + pad)
+            r = _phase_class(times[near], weights[near], section.period, section.phase, m)
+        return GridSection(section.start_s, section.end_s, section.period * m,
+                           section.phase + r * section.period, section.inliers,
+                           section.residual_ms, section.coverage)
+
+    flat = _one_octave([beat_level(s) for run in runs for s in run], times, weights)
+    sections: list[GridSection] = []
+    gaps: list[tuple[float, float]] = []
+    at = 0
+    for n, run in enumerate(runs):
+        part = _settle_boundaries(times, weights, list(flat[at:at + len(run)]))
+        at += len(run)
+        if gap_before[n]:
+            # A run after a gap opens on its first attack on its own grid.
+            first = part[0]
+            later = times[times >= first.start_s - 0.12 * first.period]
+            opening = _first_on_grid(later, first) if later.size else first.start_s
+            if first.start_s < opening < first.end_s:
+                part[0] = replace(first, start_s=opening)
+            gaps.append((sections[-1].end_s if sections else float(times[0]), part[0].start_s))
+        for i in range(1, len(part)):
+            cut = _cut_on_attack(times, part[i - 1], part[i])
+            left, right = part[i - 1], part[i]
+            part[i - 1] = _refit_span(times, weights, left.start_s, cut,
+                                      left.period, left.phase) or replace(left, end_s=cut)
+            part[i] = _refit_span(times, weights, cut, right.end_s,
+                                  right.period, right.phase) or replace(right, start_s=cut)
+        sections.extend(part)
+    if trailing:
+        gaps.append((sections[-1].end_s, float("inf")))
+    meter_text, downbeat, bar_beats = _meter_from_grid(
+        times, weights, sections[0].period, sections[0].phase)
+    own = times[times >= sections[0].start_s - 0.12 * sections[0].period]
+    return {"times": times, "weights": weights, "env": env, "sections": sections,
+            "meter": meter_text, "meter_beats": bar_beats, "downbeat": downbeat,
+            "atoms_per_beat": m, "first_sound": _first_on_grid(own, sections[0]),
+            "gaps": gaps}
+
+
+def _trim_to_grid(times: np.ndarray, weights: np.ndarray, section: GridSection,
+                  backwards: bool) -> GridSection:
+    """A section cut back, on one side, to the last beat its own core predicts.
+
+    Growth accepts a chunk at 0.11 of a beat, so a grid runs on a few beats
+    into a ramp before it fails. Refitted on the middle half of the section,
+    the grid is walked outward (_grid_reach) with _tune_boundary's tolerance,
+    set by that core's residual, and the section ends on the last beat that
+    still found an attack.
+    """
+    span = section.end_s - section.start_s
+    core_lo, core_hi = section.start_s + 0.25 * span, section.end_s - 0.25 * span
+    core = _refit_span(times, weights, core_lo, core_hi, section.period, section.phase)
+    if core is None:
+        return section
+    tolerance = float(min(0.06 * core.period, max(0.010, 4.0 * core.residual_ms / 1000.0)))
+    if backwards:
+        edge = _grid_reach(times, core.period, core.phase, core_lo,
+                           section.start_s - 0.5 * core.period, True, tolerance)
+        start, end = max(section.start_s, edge - 0.5 * core.period), section.end_s
+    else:
+        edge = _grid_reach(times, core.period, core.phase, core_hi,
+                           section.end_s + 0.5 * core.period, False, tolerance)
+        start, end = section.start_s, min(section.end_s, edge + 0.5 * core.period)
+    if end - start < 0.5 * span:
+        return section
+    return _refit_span(times, weights, start, end, core.period, core.phase) or section

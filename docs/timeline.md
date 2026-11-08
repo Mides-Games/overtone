@@ -20,6 +20,43 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · A grid per stretch for songs no single grid holds (off)
+
+### Changed
+
+- Roadmap 29.3, behind `SEGMENTED_GRID` (**off**). The precision engine judges one
+  grid over its 90 s anchor window; a song that changes tempo inside it explains too
+  few attacks on that grid (150 -> 166 -> 150 BPM: 32 %, under the 0.40 gate) and the
+  whole song went to the v2 tracker -- the "legacy" path that 18 % of ranked maps
+  take in the app engine when the Rust core refuses. With the flag, `analyze_audio`
+  first reads the beat octave on the 16 s window whose own grid explains its attacks
+  best, grows and merges sections as the precision engine does, and keeps a
+  section's grid only where it holds (55 % of the attack weight, better than chance
+  at 10^-6, inliers within 12 ms RMS). Grids are cut back from a ramp to the last
+  beat their core predicts, cuts move to the nearest beat of the new grid that has
+  an attack, and the sections are read at the whole or half BPM where the attacks
+  agree. The tracker keeps only the stretches where no grid holds (8 attacks or
+  more); its lines are spliced in there. Experiment `segmented-grid` registered.
+- `_snap_whole_bpm` takes the steps it tries (`grains`); every existing caller keeps
+  whole BPMs only.
+
+### Measured
+
+- Not measured on ranked maps: it stays off until `bench/replay.py` and the server
+  experiment `segmented-grid` measure it.
+- Synthetic, flag on: 150 -> 166 -> 150 BPM clicks (40 / 96 / 64 beats), which the
+  tracker gave 4 lines with a 153.7 BPM line 1.2 s early, now get 3 lines at 150 /
+  166 / 150 within 0.5 ms of each change; with a 24-beat ramp into and out of the
+  166 section, the grids keep both steady stretches and the tracker the ramps (clicks
+  within 10 ms of a line's beat 96.8 -> 97.6 %). On every bench fixture that reaches
+  the tracker (the 120->160, 180->140 and 90->200 ramps, `_ramp`, pads, noise) no 16 s
+  window holds a grid, so the flag changes nothing there.
+- Flag off, on this machine before the owner stopped local suites (2026-11-08,
+  before #154): benchmark 24/24 (median 0.0000 BPM / 0.14 ms), bpm-snapshot 24/24,
+  golden 27/27, coverage, measures, signatures, robustness, reference 24/24, assisted,
+  fixtures and fuzz (3000) pass. Perf failed on every stage, the untouched ones too
+  (load, Beat This!), as it did on master under the same parallel load. The full
+  suite and gates run on the server after merge.
 ## Unreleased — 2026-11-08 · Tempo changes found on the attacks and landed on the beat (off)
 
 ### Changed
@@ -141,6 +178,9 @@ by `bench/rankable.py`, rankable songs:
   engine fingerprint, so one full re-analysis). Locally, three fixtures (a tempo change,
   a breakdown, a refusal) replay to the analysed lines exactly; the refusal keeps its
   report and attacks.
+
+---
+
 ## Unreleased — 2026-11-08 · The tempo judge skips audio it cannot read
 
 ### Fixed

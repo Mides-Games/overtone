@@ -1050,6 +1050,86 @@ class CoherenceMapTests(unittest.TestCase):
         self.assertEqual((at.size, period.size, r.size), (0, 0, 0))
 
 
+class SegmentedGridTests(unittest.TestCase):
+    """A grid per stretch where none holds for the whole song (SEGMENTED_GRID,
+    roadmap 29.3). 150 -> 166 -> 150 BPM explains 32 % of its attacks on one
+    grid over the anchor window, so the precision engine refuses it and the
+    whole song went to the beat tracker."""
+
+    SECTIONS = [(40, 150.0), (96, 166.0), (64, 150.0)]
+
+    def test_each_tempo_gets_its_own_red_line(self):
+        import overtone
+        from unittest import mock
+        from engine_support import _click_sections
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "three.wav"
+            truth = _click_sections(path, self.SECTIONS)
+            with mock.patch.object(overtone, "SEGMENTED_GRID", True):
+                analysis = analyze_audio(path)
+        self.assertEqual(analysis.engine, "precision")
+        self.assertEqual(len(analysis.points), len(truth))
+        for point, (start, bpm) in zip(analysis.points, truth):
+            with self.subTest(start=start):
+                self.assertAlmostEqual(point.bpm, bpm, delta=0.05)
+                self.assertLess(abs(point.offset_ms - start * 1000.0), 5.0)
+
+    def test_flag_off_leaves_the_song_to_the_tracker(self):
+        import overtone
+        from unittest import mock
+        from engine_support import _click_sections
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "three.wav"
+            _click_sections(path, self.SECTIONS)
+            with mock.patch.object(overtone, "_segmented_engine",
+                                   side_effect=AssertionError("segmented ran")):
+                analysis = analyze_audio(path, osu_conventions=False)
+        self.assertEqual(analysis.engine, "legacy")
+
+    def test_a_steady_song_never_reaches_it(self):
+        import overtone
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "steady.wav"
+            _click_track(path, 150.0, duration=24.0)
+            with mock.patch.object(overtone, "SEGMENTED_GRID", True), \
+                    mock.patch.object(overtone, "_segmented_engine",
+                                      side_effect=AssertionError("segmented ran")):
+                analysis = analyze_audio(path)
+        self.assertEqual(analysis.engine, "precision")
+        self.assertEqual(len(analysis.points), 1)
+        self.assertAlmostEqual(analysis.points[0].bpm, 150.0, delta=0.05)
+
+    def test_noise_is_still_refused(self):
+        import overtone
+        import soundfile as sf
+        from unittest import mock
+        rng = np.random.default_rng(3)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "noise.wav"
+            sf.write(str(path), (0.3 * rng.standard_normal(22050 * 20)).astype(np.float32), 22050)
+            with mock.patch.object(overtone, "SEGMENTED_GRID", True):
+                with self.assertRaises(ValueError):
+                    analyze_audio(path)
+
+    def test_gaps_keep_the_trackers_lines(self):
+        from overtone import pipeline
+        grid = Analysis("x", 60.0, np.zeros(0), np.zeros(0),
+                        [TimingPoint(250.0, 150.0, 1.0, 0), TimingPoint(30000.0, 166.0, 1.0, 1)],
+                        HOP, 44100, 1.0, engine="precision")
+        tracked = Analysis("x", 60.0, np.zeros(0), np.zeros(0),
+                           [TimingPoint(600.0, 150.4, 1.0, 0), TimingPoint(21000.0, 157.0, 1.0, 1),
+                            TimingPoint(25000.0, 162.0, 1.0, 2), TimingPoint(31000.0, 166.3, 1.0, 3)],
+                           HOP, 44100, 1.0)
+        out = pipeline._splice_gaps(grid, tracked, [(20.0, 30.0)])
+        lines = [(round(p.offset_ms, 1), p.bpm) for p in out.points]
+        # The grid's lines outside the gap, the tracker's inside it, and the
+        # tracker's line that governs the gap's start moved onto its beat there.
+        step = 60000.0 / 150.4
+        opening = round(600.0 + np.ceil((20000.0 - 600.0) / step) * step, 1)
+        self.assertEqual(lines, [(250.0, 150.0), (opening, 150.4), (21000.0, 157.0),
+                                 (25000.0, 162.0), (30000.0, 166.0)])
+        self.assertGreater(out.beats.size, 0)
 class ChangeOnBeatTests(unittest.TestCase):
     """CHANGE_ON_BEAT (roadmap 29.4): a red line whose span holds a stretch at
     another tempo is split on the beat that stretch starts, each side at its

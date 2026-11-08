@@ -274,6 +274,27 @@ HALF_BAR_CONTRAST = 1.25
 GROWTH_WINDOW_BEATS = 128
 
 
+#: A grid per stretch where none holds for the whole song (SEGMENTED_GRID,
+#: roadmap 29.3). The precision engine judges one grid over its 90 s anchor
+#: window, so a song that changes tempo inside it explains too few attacks
+#: (share < 0.40) and went whole to the v2 tracker: on the server (2026-11-08)
+#: 18 % of ranked maps, 8.4 % rankable on variable-tempo anime against 37.4 %
+#: through the Rust grid. With the flag the attacks are cut into stretches
+#: where one grid holds -- anchored on the window whose grid explains the most
+#: (SEGMENTED_WINDOW_S), grown and merged as the precision engine grows
+#: sections -- and each stretch keeps its grid only when it explains
+#: SEGMENTED_MIN_SHARE of its attack weight, beats chance (WEAK_PULSE_LOG10P)
+#: and its inliers sit within SEGMENTED_MAX_RMS_MS. The tracker keeps the
+#: stretches with SEGMENTED_GAP_ATTACKS attacks or more where none holds.
+#: Off: unmeasured on ranked maps (bench/replay.py and the server experiment
+#: segmented-grid will measure it).
+SEGMENTED_GRID = False
+SEGMENTED_WINDOW_S = 16.0
+SEGMENTED_MIN_SHARE = 0.55
+SEGMENTED_MAX_RMS_MS = 12.0
+SEGMENTED_GAP_ATTACKS = 8
+
+
 #: Beats a bar may hold. Not every integer: 11 beats to a bar is not a time
 #: signature, it is a fit artefact.
 BAR_MULTIPLES = (2, 3, 4, 5, 6, 7, 8, 9, 12)
