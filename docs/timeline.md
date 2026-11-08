@@ -20,6 +20,37 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · The tempo judge on by default
+
+### Changed
+
+- `TEMPO_JUDGE` on (roadmap 27.8 / 29.7): the octave a model of mapped tempi prefers,
+  where it rates it `TEMPO_JUDGE_MARGIN` times the reading.
+- The judge's view of the mix (its feature matrix) is kept in the replay bundle and
+  `_tempo_judge` takes it from there (`features=`), so `bench/replay.py` still needs no
+  audio with the judge on.
+
+### Measured
+
+Server, experiment `tempo-judge` against the base runs (2026-11-08, `6118909`), scored
+by `bench/rankable.py`, rankable songs:
+
+| Stage | Dev | Held out | Maps fixed / lost |
+|---|---|---|---|
+| anime-single | 71.1 -> 73.6 % | 67.5 -> 70.0 % | 65 / 0 |
+| bands-variable | 36.9 -> 37.7 % | 41.5 -> 43.9 % | 15 / 0 |
+| anime-variable | 21.1 -> 22.1 % | 27.1 -> 28.0 % | 10 / 0 |
+
+- bpm-snapshot: `odd-222.22` reads 111.11 instead of 222.22 (one octave flip, on purpose:
+  the judge, trained on ranked maps' tempi, rates the half reading higher for that click
+  track; the benchmark, octave-normalised, stays 24/24, median 0.0000 BPM / 0.14 ms).
+  Snapshot updated with this note. Other 23 readings unchanged.
+- Local checks only (the owner moved the full suite and gates to the VPS, run after
+  merge): bpm-snapshot, benchmark, the replay and tempo-judge test classes, the
+  measurement-run test, parity and facts.
+
+---
+
 ## Unreleased — 2026-11-08 · Replayable runs, and why Rust refused
 
 ### Changed

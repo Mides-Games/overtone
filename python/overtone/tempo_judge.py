@@ -103,22 +103,25 @@ def model() -> dict:
         return {k: data[k].astype(np.float64) for k in ("mu", "sd", "w1", "b1", "w2", "b2")}
 
 
-def _tempo_judge(analysis, audio: Callable[[], tuple[np.ndarray, int]]):
+def _tempo_judge(analysis, audio: Callable[[], tuple[np.ndarray, int]],
+                 features: Callable[[], np.ndarray] | None = None):
     """Every red line at x2 or x1/2 where the model says the song was read an
-    octave out; a halved line keeps the beats that carry more of the attacks."""
+    octave out; a halved line keeps the beats that carry more of the attacks.
+    ``features``, when given, supplies the mix's features instead of reading
+    the audio (a replayed run keeps them: bench/replay.py)."""
     from . import octave_choice, phrases, red_lines
     points = list(getattr(analysis, "points", None) or [])
     if not params.TEMPO_JUDGE or not points or any(getattr(p, "manual", False) for p in points):
         return analysis
     reading = float(analysis.global_bpm) or float(points[0].bpm)
     try:
-        heard = audio()
+        x = features() if features is not None else mix_features(*audio())
     except (RuntimeError, OSError, ValueError):
         # The judge re-reads the audio in Python, which can fail where the
         # engine's own decoder did not (an MP3 without FFmpeg on the server,
         # 2026-11-08): an optional judge that cannot listen keeps the reading.
         return analysis
-    f = factor(model(), mix_features(*heard), reading, params.TEMPO_JUDGE_MARGIN)
+    f = factor(model(), x, reading, params.TEMPO_JUDGE_MARGIN)
     if f == 2.0:
         lines = [(p.offset_ms, p.bpm * 2.0) for p in points]
     elif f == 0.5:

@@ -647,8 +647,11 @@ OCTAVE_RULE_HALVE_FLOOR = float("inf")
 #: 89.3 % for the fixed 120-240 range. Applied to the stages' cached analyses
 #: (2026-11-07) it changes a song only when it rates the new octave
 #: TEMPO_JUDGE_MARGIN times the reading; with no margin it broke 14 band maps.
-#: Off until measured end to end (experiment tempo-judge).
-TEMPO_JUDGE = False
+#: Measured end to end on the server (2026-11-08, 6118909, experiment
+#: tempo-judge, scored by bench/rankable.py): held-out rankable songs
+#: anime-single 67.5 -> 70.0 %, bands 41.5 -> 43.9 %, variable anime 27.1 ->
+#: 28.0 %; dev +2.5 / +0.8 / +1.0; 90 maps fixed, none lost. On since then.
+TEMPO_JUDGE = True
 TEMPO_JUDGE_MARGIN = 10.0
 TEMPO_JUDGE_MODEL = "tempo_judge.npz"
 

@@ -28,12 +28,12 @@
       "engine": "precision"
     },
     "odd-222.22": {
-      "global_bpm": 222.2222,
+      "global_bpm": 111.1111,
       "section_bpms": [
         222.2222
       ],
       "point_bpms": [
-        222.2222
+        111.11
       ],
       "meter": "4/4",
       "meter_beats": 1,
