@@ -1484,6 +1484,53 @@ Each step is an experiment on the server, kept only if held out moves too.
 | Tempo ok (0.05 BPM, every line) | 51.1 / 59.9 | 65–72 % |
 | Octave ×1 | 83.5 / 82.4 | ~92 % |
 
+## Phase 29 — The steps we were skipping (proposed 2026-11-08)
+
+The owner's question (2026-11-08): why is this taking so long, what are we not seeing?
+Measured with the worst-beat verdict (`bench/rankable.py`, rankable ≤10 ms against a
+ranked map, the spread two ranked timers of one audio show), on the server's runs of
+`6118909`, held out: rankable songs 41.5 % bands, 27.1 % variable anime, 67.5 % single
+anime. Four things explain more of the gap than any single engine idea tried in Phase 27:
+
+1. **The loop is slow.** An idea is a flag, a PR, a merge, a deploy and hours of
+   re-analysis before it has a number; the server only runs `master`. Most of the ideas
+   Phase 27 tried are post-processing on the Rust core's output, yet every one of them
+   re-ran the whole analysis. The reports keep only the final lines, so nothing can be
+   replayed.
+2. **18 % of maps never reach the precision engine.** Where the Rust core finds no single
+   grid it refuses and the v3 beat tracker (`legacy`) answers: 1,324 of 7,322 ranked maps.
+   There, held-out rankable maps are 8.4 % on variable anime (37.4 % through Rust), 43.9 %
+   on bands (53.4 %). The reports do not even keep why Rust refused.
+3. **Tempo misses are sections the engine never writes, not wrong BPMs.** On variable
+   anime the engine's main line already has the map's BPM; the misses are intros, outros
+   and mid-song stretches at another tempo. No post-processing rule on the lines fixes them
+   (tried: rounding, merging, dropping short sections: 0–2 maps). An ideal detector of
+   changes ≥1 % landed on the exact beat would make 227 dev / 129 held-out maps rankable;
+   the same detector one beat late fixes 30–57 / 16–50. Change detection has to work on
+   the attacks and land on the beat.
+4. **The product cannot say when it is sure.** A song is either right or not, and today
+   the user cannot tell which. A self-check against the audio would let the engine say
+   "10/10" where it is, and point at the section to look at where it is not.
+
+Not the gap: the language. Rust and the v3 Python engine agree to 0.0001 ms on every
+golden vector; porting changes speed, never precision. The server's time goes to Beat
+This!, the second (Python) decode and the legacy path, not the Rust core (0.6–1.4 s a
+song). Port a Python step to Rust once it is settled and on by default, never while it is
+an experiment.
+
+| Step | Work | Exit evidence | Priority | State |
+|---|---|---|---|---|
+| 29.1 | **Replay cache.** On each server run, keep per song the Rust core's own report (`overtone-cli analyze --full`: attacks, sections, points, or the refusal and its diagnostics) and what Beat This! answered when a judge asked; serve it as one bundle per run. `bench/replay.py` rebuilds each analysis locally, runs the Python conventions under any flags, and scores with `rankable.py`. Derived features only: no audio leaves the server. | At default flags the replay reproduces the server's lines for ≥99 % of maps; a convention experiment over all 7,322 maps runs locally in minutes. | P0 | in progress (2026-11-08) |
+| 29.2 | **Why Rust refuses.** Carry `rust_said` and the refusal's diagnostics into every map row; count the kinds per stage. | A table of refusal kinds by stage in the timeline. | P0 | in progress (2026-11-08) |
+| 29.3 | **Replace the legacy fallback for multi-tempo songs.** Where Rust finds no single grid, segment the song on the attacks' phase (the 27.3 idea, now on the refused songs) and fit a precision grid per segment, keeping v3's tracker only where no segment holds a grid. | Held-out rankable on the refused maps up from 8.4 % (variable anime) toward the Rust path's 37 %; nothing rankable lost elsewhere. | P0 | not started; needs 29.1–29.2 |
+| 29.4 | **Change points on the beat.** On the attacks, find where the phase error turns from flat to a ramp (optimal partitioning, BIC), snap each cut to the nearest beat with an attack, keep it only if both sides fit their own tempo better. Intros/outros first (the cheapest: 94 dev / 71 held-out maps at the ideal). | Held-out variable-anime rankable up with no single-anime loss; replayed first, server run to confirm. | P0 | not started; needs 29.1 |
+| 29.5 | **Self-check ("¿10/10?").** Per section, the worst distance of strong attacks to the grid and the octave margin, as one verdict the engine gives without a map: sure / look at this section. Report coverage at precision: the share of songs marked sure and how many of those are rankable. | ≥95 % of "sure" songs rankable on held out, with the coverage reported. | P1 | not started; needs 29.1 |
+| 29.6 | **Off-beat phase check** (`PHASE_CHECK`): a line half a beat off moved onto the beat with the stronger attacks; 2–7 % of maps miss this way. | Replayed and confirmed on the server; held-out gain, no loss. | P1 | built, off (2026-11-08) |
+| 29.7 | **Octave by the tempo judge end to end** (27.8). | Held-out rankable gain on every stage. | P1 | measuring (2026-11-08): bands held out rankable songs 41.5 -> 43.9 % |
+| 29.8 | **Server runs a branch** (`remote.py run --ref`): measure before merging. Lower once 29.1 replays post-processing locally; still needed for core (Rust) changes. | A run on a pushed branch reports its commit. | P2 | not started |
+| 29.9 | **Learn from the ~25,000 hand-timed maps** (27.14): a change-point classifier on attack features, then a Beat This! fine-tune on osu! timings, only after 29.1–29.4 show what the hand-written detector cannot reach. | Held-out gain on an untouched cohort over the 29.4 detector. | P2 | not started |
+| 29.10 | **Beat This! in Rust (`ort`)**, the one port that pays: one decode instead of two, and the slowest stage out of Python. Audit against golden vectors first (docs/17 §7). | Same activations within tolerance; server time per song measured before and after. | P3 | not started |
+
 ## Rejected ideas
 
 | Idea | Verdict |
