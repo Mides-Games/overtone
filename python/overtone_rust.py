@@ -277,9 +277,24 @@ def conventions(analysis: ta.Analysis, path, min_delta: float = 1.5, persistence
             audio.append(ta._load_audio(os.fspath(path), lambda _message: None))
         return audio[0]
 
+    def features():
+        # The tempo judge's view of the mix: a short vector, kept so a replay
+        # needs no audio.
+        if replay is not None:
+            if "mix_features" not in replay:
+                raise ReplayMissing("the tempo judge did not run on the server")
+            kept = replay["mix_features"]
+            return np.asarray(kept["values"], dtype=kept["dtype"]).reshape(kept["shape"])
+        from overtone import tempo_judge
+        x = tempo_judge.mix_features(*mix())
+        if capture is not None:
+            capture["mix_features"] = {"shape": list(np.shape(x)), "dtype": str(np.asarray(x).dtype),
+                                       "values": [float(v) for v in np.ravel(x)]}
+        return x
+
     analysis = ta._fold_local_to_map_octave(analysis, before, before_beats, tempo)
     analysis = ta._song_octave_by_beat_this(analysis, heard)
-    return ta._tidy_bpms(ta._lines_on_downbeats(ta._phrase_lines(ta._snap_whole_points(ta._tempo_judge(ta._octave_rule(ta._smooth_octaves(ta._fold_lines_to_song_octave(analysis, heard))), mix)))))
+    return ta._tidy_bpms(ta._lines_on_downbeats(ta._phrase_lines(ta._snap_whole_points(ta._tempo_judge(ta._octave_rule(ta._smooth_octaves(ta._fold_lines_to_song_octave(analysis, heard))), mix, features)))))
 
 
 def attacks(path: str | os.PathLike[str], *, cli: Path | None = None,
