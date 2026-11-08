@@ -537,10 +537,39 @@ def _cap_octaves(analysis: Analysis) -> Analysis:
                        local_bpms=np.array([b for _, b in lines], dtype=float)[which])
 
 
+def _steady_line(lines: list[tuple[float, float]]) -> list[tuple[float, float]] | None:
+    """The one line a steady song's near-equal lines stand for
+    (MERGE_STEADY_LINES), or None when they are not near-equal."""
+    if len(lines) < 2 or any(bpm <= 0 for _, bpm in lines):
+        return None
+    bpms = np.array([bpm for _, bpm in lines], dtype=float)
+    median = float(np.median(bpms))
+    if float(np.max(np.abs(bpms / median - 1.0))) > params.MERGE_STEADY_TOL:
+        return None
+    for tidy in (float(round(median)), round(median * 2.0) / 2.0):
+        if abs(tidy - median) <= params.MERGE_STEADY_SNAP:
+            return [(float(lines[0][0]), tidy)]
+    return [(float(lines[0][0]), round(median, 2))]
+
+
+def _merge_steady_lines(analysis: Analysis) -> Analysis:
+    """Near-equal red lines written as one (MERGE_STEADY_LINES)."""
+    points = list(getattr(analysis, "points", None) or [])
+    if (not params.MERGE_STEADY_LINES or len(points) < 2
+            or any(getattr(p, "manual", False) for p in points)
+            or len({p.meter for p in points}) > 1):
+        return analysis
+    merged = _steady_line([(p.offset_ms, p.bpm) for p in points])
+    if merged is None:
+        return analysis
+    return _with_lines(analysis, merged, beats=red_lines._beats_of(merged, float(analysis.duration)))
+
+
 def _tidy_bpms(analysis: Analysis) -> Analysis:
     """The finished red lines at the BPMs _tidy_bpm reads (TIDY_BPM), after
-    the octave cap (OCTAVE_CAP): every engine path ends here."""
-    analysis = _cap_octaves(analysis)
+    the octave cap (OCTAVE_CAP) and steady merging (MERGE_STEADY_LINES):
+    every engine path ends here."""
+    analysis = _merge_steady_lines(_cap_octaves(analysis))
     points = list(getattr(analysis, "points", None) or [])
     if not params.TIDY_BPM or not points or any(getattr(p, "manual", False) for p in points):
         return analysis

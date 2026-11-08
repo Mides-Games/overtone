@@ -780,6 +780,18 @@ TIDY_BPM_ONE_DECIMAL = 0.011
 #: The most a line's ends may move to write its BPM with one decimal.
 TIDY_BPM_DRIFT_MS = 2.0
 
+#: A song the engine wrote as several lines whose BPMs all sit within
+#: MERGE_STEADY_TOL of their median (142.0 / 142.12 / 141.98) is one steady
+#: tempo followed too closely: written as one line through the first line's
+#: beat, at the whole BPM (or .5) when that is within MERGE_STEADY_SNAP of the
+#: median. Every line must share one meter. Measured offline on the server's
+#: reports of 2026-11-08 (6118909, bench/rankable.py): held-out rankable maps
+#: anime-single 70.6 -> 72.2 %, bands 50.9 unchanged, anime-variable 30.6
+#: unchanged; dev +1.7 / +1.6 / 0; no rankable map lost on any stage.
+MERGE_STEADY_LINES = True
+MERGE_STEADY_TOL = 0.005
+MERGE_STEADY_SNAP = 0.15
+
 
 #: A red line above OCTAVE_CAP_BPM is read at half (OCTAVE_CAP). Measured on
 #: the server's dev reports of 2026-10-31 (5fdf765, bench/diagnose.py by our
