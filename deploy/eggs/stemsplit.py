@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 VERSION = "v0.2.0"
-BASE = f"https://github.com/Mides-Games/Stemsplit/releases/download/{VERSION}/"
+BASE = f"https://github.com/Mides-Games/stemsplit/releases/download/{VERSION}/"
 SHA256 = {
     "stemsplit-x86_64-linux-gnu": "7e2fc60157682ede2dc9bd700a1150ceec7d70c357b10f85681e565b907b335d",
     "stemsplit-x86_64-linux-musl": "2d169f8dc03a83cc55e6beb37d98bc1a442a8bac196dfc28f1d9ff32551523a3",

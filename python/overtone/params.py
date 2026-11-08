@@ -605,7 +605,7 @@ PERCUSSIVE_PAD_S = 2.0
 
 
 #: The drums stem of our own separator for the grid (STEMS_DRUMS, roadmap
-#: step 28.3): Mides-Games/Stemsplit's U-Net, run as its CLI the way the Rust
+#: step 28.3): Mides-Games/stemsplit's U-Net, run as its CLI the way the Rust
 #: engine runs overtone-cli, so the network and its weights stay out of this
 #: workspace until they earn a place. Beat This! keeps the mix. Off until
 #: measured (experiment stems-drums); when on and the separator is missing,
