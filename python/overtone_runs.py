@@ -136,6 +136,7 @@ EXPERIMENTS = {
     "piecewise-drift-32": {"PIECEWISE_GRID": True, "DRIFT_WINDOW_BEATS": 32},
     "constant-grid-looser": {"CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 40.0,
                              "CONSTANT_GRID_SHARE": 0.7},
+    "segmented-grid": {"SEGMENTED_GRID": True},
 }
 #: The most analyses one run holds at once.
 MAX_JOBS = 8

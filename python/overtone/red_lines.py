@@ -70,12 +70,14 @@ def _grid_rms(times: np.ndarray, weights: np.ndarray, period: float,
 
 
 def _snap_whole_bpm(analysis: Analysis, min_delta: float, persistence: int,
-                    min_confidence: float) -> Analysis:
+                    min_confidence: float, grains: tuple[float, ...] = (1.0,)) -> Analysis:
     """Read each section at the whole BPM next to it when its attacks agree.
 
     A fractional BPM the music really has (decimal-128.37) fits its attacks
     clearly better than the whole number beside it and is kept; a section a
     few tenths off a whole BPM only because its fit was short is moved.
+    ``grains`` are the steps tried in turn: (1.0, 0.5) tries the half BPM
+    beside it when the whole one does not hold (the segmented grid's).
     """
     if not analysis.sections:
         return analysis
@@ -86,16 +88,20 @@ def _snap_whole_bpm(analysis: Analysis, min_delta: float, persistence: int,
     changed, out = False, []
     for section in analysis.sections:
         shown = section.bpm * factor
-        whole = round(shown)
-        if whole <= 0 or abs(shown - whole) > params.WHOLE_BPM_REACH or abs(shown - whole) < 1e-6:
-            out.append(section)
-            continue
-        window = (times >= section.start_s) & (times <= section.end_s)
-        rms, _, n = _grid_rms(times[window], weights[window], section.period, section.phase)
-        period = 60.0 / (whole / factor)
-        rms2, phase2, n2 = _grid_rms(times[window], weights[window], period, section.phase)
-        if n and n2 >= 0.95 * n and rms2 <= rms * grow + add:
-            out.append(replace(section, period=period, phase=phase2))
+        snapped = None
+        for grain in grains:
+            whole = round(shown / grain) * grain
+            if whole <= 0 or abs(shown - whole) > params.WHOLE_BPM_REACH or abs(shown - whole) < 1e-6:
+                continue
+            window = (times >= section.start_s) & (times <= section.end_s)
+            rms, _, n = _grid_rms(times[window], weights[window], section.period, section.phase)
+            period = 60.0 / (whole / factor)
+            rms2, phase2, n2 = _grid_rms(times[window], weights[window], period, section.phase)
+            if n and n2 >= 0.95 * n and rms2 <= rms * grow + add:
+                snapped = replace(section, period=period, phase=phase2)
+                break
+        if snapped is not None:
+            out.append(snapped)
             changed = True
         else:
             out.append(section)

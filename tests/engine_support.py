@@ -154,6 +154,28 @@ def _click_ramp(path: Path, bpm0: float, bpm1: float, duration: float,
     return np.asarray(clicks)
 
 
+def _click_sections(path: Path, sections, start: float = 0.25,
+                    sr: int = 44100) -> list[tuple[float, float]]:
+    """_click_track's kick on every beat of ``sections``, (beats, bpm) in
+    turn, so every change lands on a beat. Returns [(start_s, bpm)]."""
+    import soundfile as sf
+    truth, clicks, tt = [], [], start
+    for beats, bpm in sections:
+        truth.append((tt, bpm))
+        for _ in range(beats):
+            clicks.append(tt)
+            tt += 60.0 / bpm
+    y = np.zeros(int(sr * (tt + 0.5)), dtype=np.float32)
+    n = int(0.04 * sr)
+    t = np.arange(n) / sr
+    kick = (np.sin(2 * np.pi * 160 * t) * np.exp(-t / 0.006)).astype(np.float32)
+    for at in clicks:
+        i = int(round(at * sr))
+        y[i:i + n] += kick
+    sf.write(str(path), y, sr)
+    return truth
+
+
 def _from_nearest_ms(times, targets, reach: float = 0.06) -> np.ndarray:
     """Each time less its nearest target, in ms (+ when later); those with no
     target within ``reach`` seconds are left out."""

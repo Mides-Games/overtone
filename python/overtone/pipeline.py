@@ -186,46 +186,130 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     y_mix, y = y, drum_signal._percussive(y, sr)
     factor = float(force_subdivision) if force_subdivision else 1.0
 
+    conventions = not force_subdivision and prefer_map_bpm and osu_conventions
+    segmented = None
     if engine in ("auto", "precision"):
         failure = ""
+        evidence: dict = {}
         try:
             fit = precision_grid._precision_engine(y, sr, min_delta, persistence, prefer_map_bpm,
-                                    refine_beats, say)
+                                    refine_beats, say, evidence)
         except Exception as exc:
             if engine == "precision":
                 raise
             # Falling back is correct, but doing it *silently* would hide a real
             # bug behind merely-worse numbers, so say what went wrong.
             fit, failure = None, f" ({type(exc).__name__}: {exc})"
+        if fit is None and engine == "auto" and params.SEGMENTED_GRID and "times" in evidence:
+            # No grid holds for the whole song: one per stretch where one does.
+            try:
+                fit = precision_grid._segmented_engine(
+                    evidence["times"], evidence["weights"], evidence["env"], sr,
+                    min_delta, persistence, prefer_map_bpm)
+            except Exception as exc:
+                fit, failure = None, failure + f" (segmented: {type(exc).__name__}: {exc})"
         if fit is not None:
             analysis = _assemble_analysis(path, y, sr, fit, min_delta, persistence,
                                           min_confidence, factor)
-            if force_subdivision or not prefer_map_bpm or not osu_conventions:
-                return analysis
-            analysis = red_lines._fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
-            analysis = red_lines._snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
-            if follow_drift:
-                analysis = red_lines._follow_drift(analysis)
-            analysis = red_lines._change_on_beat(red_lines._change_points(analysis))
-            before, before_beats = float(analysis.global_bpm), analysis.beats
-            if beat_vote and beat_this._beat_this_session() is not None:
-                say("Checking the beats with Beat This!…")
-                analysis = beat_this._beat_this_vote(analysis, y_mix, sr)
-            analysis = red_lines._fold_local_to_map_octave(
-                analysis, before, before_beats, lambda: red_lines._beat_this_tempo(y_mix, sr))
-            analysis = beat_this._song_octave_by_beat_this(analysis, lambda: beat_this._beat_this_judge_beats(y_mix, sr))
-            return phrases._tidy_bpms(octave_choice._lines_on_downbeats(phrases._phrase_lines(phrases._snap_whole_points(tempo_judge._tempo_judge(octave_choice._octave_rule(octave_choice._smooth_octaves(
-                red_lines._fold_lines_to_song_octave(analysis, lambda: beat_this._beat_this_judge_beats(y_mix, sr)))), lambda: (y_mix, sr))))))
-        if engine == "precision":
+            if not fit.get("gaps"):
+                if not conventions:
+                    return analysis
+                return _precision_conventions(analysis, y_mix, sr, min_delta, persistence,
+                                              min_confidence, say, follow_drift, beat_vote,
+                                              grains=(1.0, 0.5) if "gaps" in fit else (1.0,))
+            # Grids with gaps between them: the stages after the octave and
+            # the whole BPMs read the whole song as one grid (drift, the Beat
+            # This! vote, phrases), so they wait for the tracker's lines.
+            segmented = analysis
+            if conventions:
+                segmented = red_lines._snap_whole_bpm(
+                    red_lines._fold_to_map_octave(analysis, min_delta, persistence, min_confidence),
+                    min_delta, persistence, min_confidence, (1.0, 0.5))
+        if segmented is None and engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
         say("No fittable grid — falling back to the beat tracker…" + failure)
-    analysis = _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
-                                min_confidence, say, float(force_subdivision), refine_beats,
-                                heard=lambda: beat_this._beat_this_judge_beats(y_mix, sr),
-                                activation=lambda: beat_this._beat_this_activation(y_mix, sr))
-    if force_subdivision or not prefer_map_bpm or not osu_conventions:
-        return analysis
+    try:
+        analysis = _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
+                                    min_confidence, say, float(force_subdivision), refine_beats,
+                                    heard=lambda: beat_this._beat_this_judge_beats(y_mix, sr),
+                                    activation=lambda: beat_this._beat_this_activation(y_mix, sr))
+    except ValueError:
+        if segmented is None:
+            raise
+        return segmented                  # the tracker found nothing: the grids stand
+    if conventions:
+        analysis = _tracker_conventions(analysis, y, y_mix, sr, min_delta, persistence,
+                                        min_confidence)
+    if segmented is not None:
+        spliced = _splice_gaps(segmented, analysis, fit["gaps"])
+        return phrases._tidy_bpms(spliced) if conventions else spliced
+    return analysis
+
+
+def _precision_conventions(analysis: Analysis, y_mix: np.ndarray, sr: int, min_delta: float,
+                           persistence: int, min_confidence: float,
+                           say: Callable[[str], None], follow_drift: bool, beat_vote: bool,
+                           grains: tuple[float, ...] = (1.0,)) -> Analysis:
+    """A precision analysis read as osu! maps are timed: octave, whole BPMs
+    (``grains``: and halves, for a segmented grid), drift, the Beat This!
+    vote, the octave judges and the phrase lines."""
+    analysis = red_lines._fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+    analysis = red_lines._snap_whole_bpm(analysis, min_delta, persistence, min_confidence, grains)
+    if follow_drift:
+        analysis = red_lines._follow_drift(analysis)
+    analysis = red_lines._change_on_beat(red_lines._change_points(analysis))
+    before, before_beats = float(analysis.global_bpm), analysis.beats
+    if beat_vote and beat_this._beat_this_session() is not None:
+        say("Checking the beats with Beat This!…")
+        analysis = beat_this._beat_this_vote(analysis, y_mix, sr)
+    analysis = red_lines._fold_local_to_map_octave(
+        analysis, before, before_beats, lambda: red_lines._beat_this_tempo(y_mix, sr))
+    analysis = beat_this._song_octave_by_beat_this(analysis, lambda: beat_this._beat_this_judge_beats(y_mix, sr))
+    return phrases._tidy_bpms(octave_choice._lines_on_downbeats(phrases._phrase_lines(phrases._snap_whole_points(tempo_judge._tempo_judge(octave_choice._octave_rule(octave_choice._smooth_octaves(
+        red_lines._fold_lines_to_song_octave(analysis, lambda: beat_this._beat_this_judge_beats(y_mix, sr)))), lambda: (y_mix, sr))))))
+
+
+def _splice_gaps(grid: Analysis, tracked: Analysis,
+                 gaps: list[tuple[float, float]]) -> Analysis:
+    """A segmented grid's red lines, with the tracker's inside the stretches
+    no grid holds (SEGMENTED_GRID). Each gap opens with the tracker line that
+    governs its start, moved onto its first beat there; the grid's own line
+    after the gap closes it. The tracker's analysis carries the result, so
+    ×2 / ÷2 and the beats stay the tracker's own where the lines are."""
+    tracker = sorted(tracked.points, key=lambda p: p.offset_ms)
+    gap_ms = [(a * 1000.0, b * 1000.0) for a, b in gaps]
+
+    def in_gap(point) -> bool:
+        # A line opening the grid after a gap may sit up to a quarter of its
+        # beat before the gap's end (_points_from_sections): it is the grid's.
+        reach = 0.3 * 60000.0 / point.bpm
+        return any(a <= point.offset_ms < b - reach for a, b in gap_ms)
+
+    points = [p for p in grid.points if not in_gap(p)]
+    for a, b in gap_ms:
+        governing = [p for p in tracker if p.offset_ms <= a]
+        if governing:
+            line = governing[-1]
+            step = 60000.0 / line.bpm
+            offset = line.offset_ms + np.ceil((a - line.offset_ms) / step - 1e-9) * step
+            # Not when the tracker opens a line of its own within two beats.
+            soon = any(offset < p.offset_ms < offset + 2.0 * step for p in tracker)
+            if offset < b - 0.5 * step and not soon:
+                points.append(replace(line, offset_ms=float(offset)))
+        points.extend(p for p in tracker
+                      if a < p.offset_ms < b - 0.3 * 60000.0 / p.bpm)
+    points.sort(key=lambda p: p.offset_ms)
+    lines = [(p.offset_ms, p.bpm) for p in points]
+    return replace(tracked, points=points,
+                   beats=red_lines._beats_of(lines, float(tracked.duration)))
+
+
+def _tracker_conventions(analysis: Analysis, y: np.ndarray, y_mix: np.ndarray, sr: int,
+                         min_delta: float, persistence: int,
+                         min_confidence: float) -> Analysis:
+    """A tracker analysis read as osu! maps are timed: a local tempo, its
+    octave, the drummer, the grids and the phrase lines."""
     tracked = red_lines._local_tempo_track(analysis)
     if tracked is None:
         return phrases._tidy_bpms(red_lines._fold_to_map_octave(analysis, min_delta, persistence, min_confidence))

@@ -855,6 +855,14 @@
   "_tempo_judge": {
    "where": "python-only",
    "why": "an osu! convention applied in Python after either engine, as the octave rule is; the model reads the mix, which the Rust report does not carry"
+  },
+  "SEGMENTED_GRID": {
+   "where": "python-only",
+   "why": "the v3 pipeline's grid per stretch for a song no single grid holds (roadmap 29.3, off), tried before the v2 fallback tracker; the Rust engine refuses such a song (overtone-cli exit 3) and does not implement it"
+  },
+  "_segmented_engine": {
+   "where": "python-only",
+   "why": "the v3 pipeline's grid per stretch for a song no single grid holds (roadmap 29.3, off), tried before the v2 fallback tracker; the Rust engine refuses such a song (overtone-cli exit 3) and does not implement it"
   }
  }
 }
