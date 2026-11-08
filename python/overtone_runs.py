@@ -351,6 +351,13 @@ class RunStore:
         path = self.folder(run_id) / "log.txt"
         return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
 
+    def replay(self, run_id: str) -> bytes:
+        """The run's replay bundle (bench/stages.py write_replay), gzipped JSON."""
+        path = self.folder(run_id) / "replay.json.gz"
+        if not path.is_file():
+            raise LookupError(f"Run {run_id} kept no replay bundle.")
+        return path.read_bytes()
+
     def result(self, run_id: str) -> dict:
         path = self.folder(run_id) / "result.json"
         if not path.is_file():
@@ -575,6 +582,9 @@ def worker(argv: list[str] | None = None) -> int:
         code = single_bpm.main([*tool_args, "--json", str(report)])
     if code == 0 and report.is_file():
         Path(args.result).write_bytes(report.read_bytes())
+        replay = report.with_name(f"{report.stem}-replay.json.gz")
+        if args.tool == "stages" and replay.is_file():
+            Path(args.result).with_name("replay.json.gz").write_bytes(replay.read_bytes())
     return int(code or 0)
 
 

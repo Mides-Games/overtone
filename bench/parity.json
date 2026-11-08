@@ -60,6 +60,10 @@
    "where": "python-only",
    "why": "bench/diagnose.py reads stage reports offline; it is a measurement tool, not an engine stage"
   },
+  "ReplayTests": {
+   "where": "python-only",
+   "why": "bench/replay.py re-runs the Python conventions on a kept Rust report; a measurement tool, not an engine stage"
+  },
   "RankableVerdictTests": {
    "where": "python-only",
    "why": "bench/rankable.py reads stage reports offline; it is a measurement tool, not an engine stage"

@@ -149,12 +149,15 @@ def analysis_from_report(report: dict) -> ta.Analysis:
 
 def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence: int = 12,
             min_confidence: float = 0.75, prefer_map_bpm: bool = True,
-            cli: Path | None = None, timeout: float = TIMEOUT_S) -> ta.Analysis:
+            cli: Path | None = None, timeout: float = TIMEOUT_S,
+            capture: dict | None = None) -> ta.Analysis:
     """Analyse ``path`` with the Rust engine.
 
     Raises :class:`SidecarUnavailable` without a binary, :class:`SidecarRefused`
     when the audio has no grid, and ``RuntimeError`` with the loader's own
-    message when the file cannot be read, as v3's loader does.
+    message when the file cannot be read, as v3's loader does. ``capture``
+    (a dict) receives the core's own report, a refusal's included, and what
+    Beat This! answered (see :func:`conventions`).
     """
     binary = cli or find_cli()
     if binary is None:
@@ -171,14 +174,15 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
         source = scratch
     try:
         return _analyze(path, source, binary, min_delta, persistence, min_confidence,
-                        prefer_map_bpm, timeout)
+                        prefer_map_bpm, timeout, capture)
     finally:
         if scratch:
             os.unlink(scratch)
 
 
 def _analyze(path, source: str, binary, min_delta: float, persistence: int,
-             min_confidence: float, prefer_map_bpm: bool, timeout: float) -> ta.Analysis:
+             min_confidence: float, prefer_map_bpm: bool, timeout: float,
+             capture: dict | None = None) -> ta.Analysis:
     args = [str(binary), "analyze", source, "--full",
             "--min-delta", repr(float(min_delta)), "--persistence", str(int(persistence)),
             "--min-confidence", repr(float(min_confidence))]
@@ -189,6 +193,10 @@ def _analyze(path, source: str, binary, min_delta: float, persistence: int,
         report = json.loads(done.stdout.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         report = None
+    if capture is not None:
+        capture["returncode"] = done.returncode
+        if done.returncode == 3 and report is not None:
+            capture["report"] = report
     if done.returncode == 3 and report is not None:
         diagnostics = report.get("diagnostics", [])
         kind = diagnostics[0].get("kind") if diagnostics else None
@@ -198,9 +206,29 @@ def _analyze(path, source: str, binary, min_delta: float, persistence: int,
     if done.returncode != 0 or report is None:
         detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
         raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
+    if capture is not None:
+        capture["report"] = report
     analysis = analysis_from_report(report)
     if not prefer_map_bpm:
         return analysis
+    return conventions(analysis, path, min_delta, persistence, min_confidence, capture=capture)
+
+
+class ReplayMissing(LookupError):
+    """A replayed analysis needs something the server's run did not keep
+    (the audio itself, or Beat This! where no judge asked for it there)."""
+
+
+def conventions(analysis: ta.Analysis, path, min_delta: float = 1.5, persistence: int = 12,
+                min_confidence: float = 0.75, *, capture: dict | None = None,
+                replay: dict | None = None) -> ta.Analysis:
+    """The osu! conventions applied to the Rust core's analysis.
+
+    ``capture`` (a dict) records what Beat This! answered when a judge asked,
+    so a run can keep it beside the core's report (bench/replay.py, roadmap
+    29.1). ``replay`` is such a record: the judges get its answers instead of
+    the audio, and a step that needs the audio itself raises ReplayMissing.
+    """
     # The same osu! conventions v3 applies after its own analysis: the mapped
     # octave, the whole BPM where the attacks agree, and red lines where it
     # drifts (DRIFT_FOLLOW).
@@ -211,22 +239,40 @@ def _analyze(path, source: str, binary, min_delta: float, persistence: int,
     analysis = ta._change_points(analysis)
     before, before_beats = float(analysis.global_bpm), analysis.beats
     if ta._beat_this_session() is not None:
+        if replay is not None:
+            raise ReplayMissing("the Beat This! vote reads the audio")
         # Beat This! reads the audio itself; the Rust report carries none of it.
         y, sr = ta._load_audio(os.fspath(path), lambda _message: None)
         analysis = ta._beat_this_vote(analysis, y, sr)
     audio: list = []
 
     def heard():
+        if replay is not None:
+            if "heard" not in replay:
+                raise ReplayMissing("no Beat This! judge asked on the server")
+            beats = replay["heard"]
+            return None if beats is None else np.asarray(beats, dtype=float)
         # Read once for every judge that asks, so Beat This! runs once.
         if not audio:
             audio.append(ta._load_audio(os.fspath(path), lambda _message: None))
-        return ta._beat_this_judge_beats(*audio[0])
+        beats = ta._beat_this_judge_beats(*audio[0])
+        if capture is not None:
+            capture["heard"] = None if beats is None else [float(b) for b in beats]
+        return beats
 
     def tempo():
+        if replay is not None:
+            # red_lines._beat_this_tempo's own reading of the same beats.
+            beats = heard()
+            if beats is None or beats.size < 16:
+                return None
+            return 60.0 / float(np.median(np.diff(beats)))
         heard()
         return ta._beat_this_tempo(*audio[0])
 
     def mix():
+        if replay is not None:
+            raise ReplayMissing("the tempo judge reads the audio")
         if not audio:
             audio.append(ta._load_audio(os.fspath(path), lambda _message: None))
         return audio[0]

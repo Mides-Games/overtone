@@ -450,8 +450,16 @@ def analyse(audio: str, engine: str, cli: str | None) -> dict:
         analysis = None
         if engine in ("rust", "app"):
             import overtone_rust
+            # What the Rust core itself reported, a refusal's included, and what
+            # Beat This! answered: a run keeps it so the conventions can be
+            # replayed without the audio (bench/replay.py, roadmap 29.1).
+            capture: dict = {}
             try:
-                analysis = overtone_rust.analyze(audio, cli=Path(cli))
+                try:
+                    analysis = overtone_rust.analyze(audio, cli=Path(cli), capture=capture)
+                finally:
+                    if capture:
+                        result["replay"] = capture
                 result["backend"] = "rust"
             except Exception as exc:  # noqa: BLE001 - the app's fallback, below
                 if engine != "app":
@@ -460,6 +468,9 @@ def analyse(audio: str, engine: str, cli: str | None) -> dict:
                 # where the Rust engine refuses or fails, and says why.
                 result["backend"] = "python"
                 result["rust_said"] = f"{type(exc).__name__}: {exc}"[:200]
+                diagnostics = getattr(exc, "diagnostics", None)
+                if diagnostics:
+                    result["rust_diagnostics"] = diagnostics
         if analysis is None:
             analysis = ta.analyze_audio(audio)
         result.update(lines=exported_lines(analysis), path=str(analysis.engine),
