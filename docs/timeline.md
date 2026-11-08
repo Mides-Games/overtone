@@ -20,6 +20,70 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · A rankable verdict per map, decided by its worst beat
+
+### Changed
+
+- New headline (owner, 2026-11-08: timings that work almost 10/10 first, the averages
+  after; "rankable" means the beats sit where a ranked map's do, two-decimal BPMs
+  included). `bench/rankable.py` walks every beat from the map's first red line to the
+  song's end, both ways (map beats to the engine's and the engine's to the map's, so
+  double time cannot hide), and judges the map by its **worst** beat after the dev
+  lead: **rankable** within 10 ms, **exact** within 5 ms, else a miss with its cause
+  (refused, octave, tempo, lines, offset). **Grid locked** takes off the map's own
+  constant offset and says whether tempo, octave and changes hold. A song counts once
+  and passes if its grid passes against one of its ranked maps.
+- The 10 ms bar is the human reference, which every run prints: audios ranked in two
+  or more sets, one map per set, scored against each other the same way, copied
+  timings left out. On the three stages (50 independent pairs) two ranked timers agree
+  within 5 ms on 36 % of pairs, 10 ms on 74 %, 15 ms on 88 %; their offsets differ by a
+  median 5 ms (90th percentile 12 ms). Every difficulty inside one set agrees within
+  2 ms, so the spread is the timer's, per song.
+- `bench/stages.py` prints and stores the verdict on every run (summary `rankable`,
+  per map `rank`); `rankable.py` reads a dev and a held-out run of one stage together,
+  so a held-out run gets its dev lead, and joins the evaluation fingerprint.
+
+### Fixed
+
+- A grid whose first beat sits a few ms before the map's first red line lost that
+  beat and scored a false ~300 ms (one beat period) error: each side is now matched
+  against the other's whole grid, drawn 2 s past both edges.
+
+### Measured
+
+Server runs of 2026-11-08 on `6118909` (app engine, ranked maps, raw grid, lead fitted
+on dev: +26.3 ms bands, +28.5 / +28.7 ms anime). Songs pass against any ranked map:
+
+| Stage | Split | Songs | Rankable songs | Exact songs | Grid locked | Ranked vs ranked |
+|---|---|---:|---:|---:|---:|---:|
+| bands-variable | dev | 122 | 36.9 % | 19.7 % | 43.4 % | 1 pair |
+| bands-variable | held out | 41 | 41.5 % | 24.4 % | 48.8 % | |
+| anime-variable | dev | 289 | 21.1 % | 14.2 % | 22.8 % | 43.8 % (16 pairs) |
+| anime-variable | held out | 118 | 27.1 % | 14.4 % | 26.3 % | |
+| anime-single | dev | 474 | 71.1 % | 46.2 % | 83.3 % | 87.9 % (33 pairs) |
+| anime-single | held out | 200 | 67.5 % | 44.0 % | 80.5 % | |
+
+- Misses by cause, share of held-out maps (bands / variable anime / single anime):
+  octave 23 / 20 / 4 %, tempo 3 / 39 / 1 %, offset 13 / 0 / 15 %. Two causes the
+  verdict folds into lines, counted by hand: grids half a beat off (on the off-beat)
+  7 / 4 / 2 %, and steady songs written as several near-equal lines 0.5 / 0 / 5 %.
+- Offset is not predictable from the report's features: on 720 locked songs, BPM,
+  residual, off-beat ratio, stability, octave margin, backend, duration and first-line
+  time each correlate |r| < 0.1 with the song's offset, and a linear model fitted on dev
+  moves held-out offsets within 10 ms from 85.6 to 87.1 % (sd 6.7 -> 6.8 ms): no gain,
+  as 27.11 found with attack shapes.
+- A BPM inside the 0.05 "tempo ok" bar can still miss: 0.04 BPM at 180 drifts 13 ms
+  over a minute (a unit test pins it).
+- Verification: unittest pass; facts and parity pass. No engine code changed, so the
+  accuracy gates were not re-run.
+
+### Rejected / tried and dropped
+
+- 5 ms against one ranked map as the rankable bar: ranked timers of the same audio meet
+  it against each other on 36 % of pairs. It stays, as "exact", beside the 10 ms bar.
+
+---
+
 ## Unreleased — 2026-11-07 · Locked ranked baselines and independent accuracy intervals
 
 ### Changed
