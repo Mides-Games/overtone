@@ -111,7 +111,14 @@ def _tempo_judge(analysis, audio: Callable[[], tuple[np.ndarray, int]]):
     if not params.TEMPO_JUDGE or not points or any(getattr(p, "manual", False) for p in points):
         return analysis
     reading = float(analysis.global_bpm) or float(points[0].bpm)
-    f = factor(model(), mix_features(*audio()), reading, params.TEMPO_JUDGE_MARGIN)
+    try:
+        heard = audio()
+    except (RuntimeError, OSError, ValueError):
+        # The judge re-reads the audio in Python, which can fail where the
+        # engine's own decoder did not (an MP3 without FFmpeg on the server,
+        # 2026-11-08): an optional judge that cannot listen keeps the reading.
+        return analysis
+    f = factor(model(), mix_features(*heard), reading, params.TEMPO_JUDGE_MARGIN)
     if f == 2.0:
         lines = [(p.offset_ms, p.bpm * 2.0) for p in points]
     elif f == 0.5:

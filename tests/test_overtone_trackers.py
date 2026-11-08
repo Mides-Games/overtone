@@ -1010,3 +1010,12 @@ class TempoJudgeTests(unittest.TestCase):
         self.assertIs(overtone._tempo_judge(analysis, lambda: self.fail("read the audio")), analysis)
         with mock.patch.object(overtone, "TEMPO_JUDGE", True):
             self.assertIs(overtone._tempo_judge(analysis, lambda: self.fail("read the audio")), analysis)
+
+    def test_audio_it_cannot_read_keeps_the_reading(self):
+        import overtone
+        analysis = mock.Mock(points=[mock.Mock(manual=False, bpm=60.0)], global_bpm=60.0)
+
+        def undecodable():
+            raise RuntimeError("Could not decode audio. For MP3/M4A/AAC install FFmpeg")
+        with mock.patch.object(overtone, "TEMPO_JUDGE", True):
+            self.assertIs(overtone._tempo_judge(analysis, undecodable), analysis)

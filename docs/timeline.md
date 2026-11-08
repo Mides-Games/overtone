@@ -20,6 +20,19 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · The tempo judge skips audio it cannot read
+
+### Fixed
+
+- With `TEMPO_JUDGE` on, the server's bands dev run (`tempo-judge`, 6118909) lost one
+  song's 8 maps to "Could not decode audio": the judge re-reads the audio in Python,
+  which needs FFmpeg for that MP3, while the engine had decoded it in Rust. An optional
+  judge that cannot listen now keeps the reading instead of failing the analysis.
+
+### Measured
+
+- Not re-measured: the flag is off by default; the next `tempo-judge` run shows it.
+- Verification: unittest 633 pass; facts and parity pass. No default changed.
 ## Unreleased — 2026-11-08 · A steady song written as one red line
 
 ### Changed
