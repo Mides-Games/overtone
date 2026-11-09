@@ -20,6 +20,32 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · Rankable on notes, beside the worst beat
+
+### Changed
+
+- `bench/rankable.py` reads a second verdict, the **worst note**: every hit object of
+  the map at its own snap (1/1, 1/2, 1/4, 1/3 ...) of the map's timing, looked up on the
+  engine's grid at that snap, less the dev part's median. Rankable within 10 ms,
+  playable within 20 ms. Stage reports now carry each map's note times (`notes`) for it;
+  older reports print the worst beat only. The worst beat stays the headline.
+
+### Why
+
+- The worst beat counts beats no one plays. Two ranked maps of *Black Rover* agree to a
+  median 0 ms and 95 % of beats within 0.5 ms, yet fail at 164 ms: one timer resets the
+  metronome half a beat after a beat and the clipped beat before it is scored. Others
+  fail on the outro after the last object.
+
+### Measured
+
+- Computed on the server from the afbf3a5 stage reports and their .osu files, songs
+  held out, worst beat <= 10 ms -> worst note <= 10 / 15 / 20 ms:
+  anime-single 71.5 -> 70.0 / 79.5 / 83.0 %, bands 41.5 -> 39.0 / 46.3 / 46.3 %,
+  anime-variable 28.0 -> 35.6 / 39.0 / 44.9 %. Scoring only between the first and last
+  note moved the worst beat by 0 / +2.4 / +2.5 points.
+- Suite: the rankable tests pass (3 new); facts and parity pass.
+
 ## Unreleased — 2026-11-08 · Half-beat phase check on by default
 
 ### Changed

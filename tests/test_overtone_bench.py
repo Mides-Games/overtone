@@ -1119,8 +1119,44 @@ class RankableVerdictTests(unittest.TestCase):
                     "rows": [self.row(offset, 150.0)]}
         pairs = ranked_pairs([m("x", 1000.0), m("y", 1000.0), m("z", 1007.0), m("w", 1000.0, "b")])
         # x-y is a copy; x-z and y-z are two timers 7 ms apart; b has one set.
-        self.assertEqual(pairs.shape, (2, 2))
+        self.assertEqual(pairs.shape, (2, 3))
         self.assertTrue(np.allclose(pairs[:, 0], 7.0) and np.allclose(pairs[:, 1], 0.0))
+        self.assertTrue(np.all(np.isnan(pairs[:, 2])))  # no notes, no note reading
+
+    def test_worst_note_reads_each_note_at_its_own_snap(self):
+        from bench.rankable import note_errors
+        # 120 BPM from 0: beats every 500 ms; notes on 1/1, 1/2 and 1/4.
+        notes = [1000, 1250, 1375, 2000]
+        self.assertTrue(np.allclose(note_errors([(0.0, 120.0)], [(0.0, 120.0)], notes), 0.0))
+        # Half a beat off: the 1/1 notes land 250 ms from a beat; the 1/2 one is on its tick.
+        e = note_errors([(0.0, 120.0)], [(250.0, 120.0)], notes)
+        self.assertAlmostEqual(abs(e[0]), 250.0)
+        self.assertAlmostEqual(e[1], 0.0)
+
+    def test_a_clipped_beat_before_a_reset_costs_nothing_on_notes(self):
+        from bench.rankable import beat_errors, note_errors
+        # One timer resets the metronome 165 ms after a beat (half of 330 ms);
+        # the other runs on. No note sits on the clipped beat.
+        a = [(0.0, 60000.0 / 330.0)]
+        b = [(0.0, 60000.0 / 330.0), (3465.0, 60000.0 / 330.0)]
+        notes = [330 * k for k in range(1, 10)] + [3465 + 330 * k for k in range(0, 10)]
+        self.assertGreater(np.max(np.abs(beat_errors(a, b, 8.0))), 100.0)
+        # a's notes after the reset are on a's grid, half a beat from b's: a real
+        # disagreement for those notes; b's notes on a's grid likewise. Before
+        # the reset the two agree on every note.
+        before = [n for n in notes if n < 3465]
+        self.assertTrue(np.allclose(note_errors(a, b, before), 0.0, atol=0.5))
+
+    def test_note_times_reads_hit_objects(self):
+        import tempfile
+        from bench.rankable import note_times
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "m.osu"
+            lines = ["osu file format v14", "", "[HitObjects]", "256,192,1000,1,0",
+                     "100,100,500,2,0,B|200:200,1,100", "bad", "256,192,1000,1,0", ""]
+            path.write_text("\n".join(lines),
+                            encoding="utf-8")
+            self.assertEqual(note_times(path), [500, 1000])
 
 
 class DiagnoseTests(unittest.TestCase):
