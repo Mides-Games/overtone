@@ -11,6 +11,7 @@ ranked maps (roadmap 29.1).
         --bundle <dev bundle> --bundle <held-out bundle>
     .venv/Scripts/python.exe bench/replay.py <reports...> --bundle ... --experiment merge-steady
     .venv/Scripts/python.exe bench/replay.py <reports...> --bundle ... --set PHASE_CHECK=True
+    .venv/Scripts/python.exe bench/replay.py <reports...> --bundle ... --set ONE_LINE_PHASE=False --relead --fixed
 
 ``--check`` replays at the run's own flags and counts audios whose lines differ
 from the report's: the replay is only trusted where that count is near zero.
@@ -122,6 +123,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--worst", type=int, default=0, metavar="N",
                         help="name the N maps the change made worse")
+    parser.add_argument("--fixed", action="store_true", help="name the songs the change fixed")
+    parser.add_argument("--relead", action="store_true",
+                        help="refit the lead on the replayed dev maps: a change that moves every "
+                             "line's phase moves the lead with it")
     args = parser.parse_args(argv)
     import rankable
 
@@ -173,8 +178,14 @@ def main(argv: list[str] | None = None) -> int:
         m["rank"] = rankable.verdict(m, shift)
         lines = replayed.get(m.get("audio_sha1"))
         changed = dict(m, lines=[[o, b] for o, b, *_ in lines]) if lines is not None else dict(m)
-        changed["rank"] = rankable.verdict(changed, shift)
         after_maps.append(changed)
+    if args.relead:
+        shift_after = rankable.beat_shift([m for m in after_maps if m.get("split") == "dev"])
+        print(f"lead refitted on the replayed dev maps: {shift_after:+.1f} ms")
+    else:
+        shift_after = shift
+    for changed in after_maps:
+        changed["rank"] = rankable.verdict(changed, shift_after)
     print(f"lead fitted on dev: {shift:+.1f} ms (the run's lines)")
     for name in ("dev", "holdout", "confirmation"):
         before = [m for m in maps if m.get("split") == name]
@@ -192,6 +203,12 @@ def main(argv: list[str] | None = None) -> int:
               f" {rankable.pct(b['rankable'], b['maps'])} -> {rankable.pct(a['rankable'], a['maps'])} %,"
               f" exact {rankable.pct(b['exact'], b['maps'])} -> {rankable.pct(a['exact'], a['maps'])} %"
               f" (fixed {fixed}, broken {broken})")
+        if args.fixed and fixed:
+            seen = set()
+            for x, y in zip(before, after):
+                if x["rank"]["verdict"] == "miss" and y["rank"]["verdict"] != "miss" and x.get("audio_sha1") not in seen:
+                    seen.add(x.get("audio_sha1"))
+                    print(f"    fixed: {Path(x['folder']).name[:60]}  {x['lines'][:2]} -> {y['lines'][:2]}")
         if args.worst and broken:
             worse = [(x, y) for x, y in zip(before, after)
                      if x["rank"]["verdict"] != "miss" and y["rank"]["verdict"] == "miss"]

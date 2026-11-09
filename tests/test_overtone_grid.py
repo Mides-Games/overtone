@@ -411,6 +411,24 @@ class MeterPathTempoChangeTests(unittest.TestCase):
                     GridSection(change, float(times[-1]), 60.0 / 150.0, change, 96, 0.1, 1.0)]
         self.assertIsNone(points_from_meter(sections, times, weights, 12))
 
+    def test_a_measure_grid_unsure_of_every_region_leaves_the_lines_to_the_sections(self):
+        # Hell Above: a 7-beat bar read on a 130 BPM song, cut into regions
+        # none of which reached the confidence floor; the likeliest became
+        # the song's one red line at 222.857 BPM.
+        from overtone import data_model, pipeline, precision_grid
+        times, weights = _accented_attacks([(130.0, 32, 4)])
+        section = GridSection(0.5, float(times[-1]), 60.0 / 130.0, 0.5, times.size, 0.1, 1.0)
+        fit = {"times": times, "weights": weights, "env": np.zeros(8), "sections": [section],
+               "meter": "4/4", "meter_beats": 4, "downbeat": 0, "first_sound": 0.5}
+        unsure = [data_model.TimingPoint(-2096.0, 148.571, 0.249, 0, 8, True),
+                  data_model.TimingPoint(56058.0, 222.857, 0.274, 1, 12, True)]
+        for confident, bpms in ((True, [130.0]), (False, [222.857])):
+            with self.subTest(confident=confident), \
+                    mock.patch.object(params, "METER_POINTS_CONFIDENT", confident), \
+                    mock.patch.object(precision_grid, "points_from_meter", return_value=unsure):
+                out = pipeline._assemble_analysis("x", np.zeros(1), 44100, fit, 1.5, 12, 0.75, 1.0)
+                self.assertEqual([round(p.bpm, 3) for p in out.points], bpms)
+
     def test_a_signature_change_over_one_bar_still_tiles(self):
         # 6/4 at 300 then 3/4 at 150: one 1.2 s bar, two notations
         times, weights = _accented_attacks([(300.0, 12, 6), (150.0, 12, 3), (300.0, 12, 6)])

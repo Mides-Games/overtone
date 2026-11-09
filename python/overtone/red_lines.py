@@ -1040,6 +1040,38 @@ def _steady_grid(beats: np.ndarray, tol_ms: float):
     return float(period), float(start), miss
 
 
+def _one_line_phase(analysis: Analysis) -> Analysis:
+    """A song written as one red line, on the phase all its attacks agree on
+    (ONE_LINE_PHASE): their weighted mean distance to the line's grid, over
+    the attacks within ONE_LINE_PHASE_TOL of a beat, the whole song long.
+
+    The line comes from one section's fit (the likeliest when none is sure,
+    as on a live band's) or a whole-BPM snap refitted on one section's
+    attacks, and osu! plays it from 0 s to the end: on Dystopia it sat 9 ms
+    off the phase the rest of the song keeps. Its BPM stays. The precision
+    engine's line only: the fallback tracker's sits on its own beats."""
+    points = list(analysis.points)
+    if not params.ONE_LINE_PHASE or len(points) != 1 or getattr(analysis, "engine", "") != "precision" \
+            or getattr(points[0], "manual", False):
+        return analysis
+    line = points[0]
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    if times.size < params.ONE_LINE_PHASE_MIN or line.bpm <= 0:
+        return analysis
+    period = 60.0 / line.bpm
+    offset = line.offset_ms / 1000.0
+    residual = times - (offset + np.round((times - offset) / period) * period)
+    near = np.abs(residual) <= params.ONE_LINE_PHASE_TOL * period
+    if int(near.sum()) < params.ONE_LINE_PHASE_MIN or float(weights[near].sum()) <= 0:
+        return analysis
+    shift_ms = float(np.average(residual[near], weights=weights[near])) * 1000.0
+    if abs(shift_ms) < 0.05:
+        return analysis
+    lines = [(line.offset_ms + shift_ms, line.bpm)]
+    return phrases._with_lines(analysis, lines, beats=_beats_of(lines, float(analysis.duration)))
+
+
 def _snap_constant_line(analysis: Analysis) -> Analysis:
     """A fallback song's one red line at the whole BPM beside it, on its
     attacks' phase, where they agree (_snap_whole_lines). _constant_grid reads
