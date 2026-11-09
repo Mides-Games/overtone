@@ -593,6 +593,21 @@ _BEAT_THIS_HEARD: list = []
 #: own, every red line moves to its octave. Off until measured on the server.
 SONG_OCTAVE_BEAT_THIS = False
 
+#: A red line moved half a beat when Beat This!'s beats sit on its half beats
+#: (PHASE_BEAT_THIS): the median beat's distance to the shifted grid under
+#: PHASE_BEAT_THIS_GAIN times its distance to the line's own. Bands-variable
+#: (afbf3a5): 16 of 36 missed single-BPM songs had the exact BPM half a beat
+#: off (fast punk and metal; the snare between the map's beats). On since
+#: 2026-11-09, songs rankable on the worst beat: bands dev 40.2 -> 44.3 %,
+#: held out 41.5 -> 46.3 % (engine run, 0 maps broken); anime one tempo dev
+#: 75.7 -> 78.5 %, held out 71.5 -> 73.5 % (1 song broken); anime tempo
+#: changes dev 22.5 -> 23.9 %, held out 28.0 % unchanged (0 broken). Anime
+#: from proto/beat_lines.py --phase on the afbf3a5 reports, which matched the
+#: engine run on 44 of 50 bands songs.
+PHASE_BEAT_THIS = True
+PHASE_BEAT_THIS_GAIN = 0.5
+PHASE_BEAT_THIS_MIN_BEATS = 8
+
 
 #: Beat This! as an extra voter (Phase 10, 10.3; owner decision 2026-10-24).
 #: The network (assets/models/beat_this_final0.onnx, MIT, see beat_this.json)

@@ -820,6 +820,14 @@
    "where": "python-only",
    "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
   },
+  "PHASE_BEAT_THIS": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine and Beat This! is an ONNX model held in Python; the Rust engine carries no model"
+  },
+  "_phase_by_beat_this": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine and Beat This! is an ONNX model held in Python; the Rust engine carries no model"
+  },
   "BEAT_THIS_TRACKER": {
    "where": "python-only",
    "why": "the fallback tracker (v2's beat tracker) runs in Python only; the Rust engine is the precision path"

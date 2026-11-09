@@ -20,6 +20,58 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-09 · Half-beat phase checked against Beat This!
+
+### Changed
+
+- `PHASE_BEAT_THIS` on: after the osu! conventions, each red line moves half a beat
+  when Beat This!'s beats inside it sit on its half beats (median distance to the
+  shifted grid under half that to its own). The BPM stays the engine's; only the
+  phase is the network's. Runs after either engine (`_phase_by_beat_this`).
+- The judge's Beat This! reads (PHASE_BEAT_THIS, the octave checks) take the vote's
+  beats of the same decode instead of running the model again: the two sessions load
+  one model. On, the check had doubled the perf gate's `beatthis` stage (edm-174
+  6.6 → 27.9 s wall on the loaded server, against 14.2 s for master at that moment).
+
+### Why
+
+- In bands-variable (afbf3a5), 16 of 36 missed single-BPM songs had the exact BPM half
+  a beat off: fast punk and metal, where the snare between the map's beats is the
+  loudest attack, so PHASE_CHECK's attack weights agree with the wrong phase.
+
+### Measured
+
+Songs rankable on the worst beat.
+
+| Stage | Dev | Held out | Broken |
+|---|---|---|---|
+| bands (engine run) | 40.2 → 44.3 % | 41.5 → 46.3 % | 0 maps |
+| anime one tempo (simulated) | 75.7 → 78.5 % | 71.5 → 73.5 % | 1 song |
+| anime tempo changes (simulated) | 22.5 → 23.9 % | 28.0 % | 0 |
+
+The anime rows come from `proto/beat_lines.py --phase` on the afbf3a5 reports; it
+matched the engine run on 44 of 50 bands songs.
+
+### Rejected / tried and dropped
+
+- **Same-BPM resets found from Beat This!'s beats** (segment each line where the beats
+  leave its grid for 16+ beats, new line at the stretch's mean distance). 0 maps fixed,
+  up to 26 broken: the beats sit on a 20 ms grid, so a stretch's offset is not known to
+  10 ms, and the split lands beats away from the map's.
+- **Beat This!'s beats fitted to lines where the engine wrote one line and the fit
+  holds two tempos** (`proto/beat_lines.py --changes`): up to 228 maps broken, 10
+  fixed. A missed or extra beat ends a fitted line, so steady songs come out as many
+  lines a fraction of a BPM apart.
+- **The Rust core's sections as lines with the change moved onto the attacks**
+  (`proto/section_lines.py`, bands held out): 25 maps broken, 0 fixed. A section's
+  BPM is not whole, its phase is not the map's to 10 ms, and outros come out as
+  sections of their own.
+- **SECTION_LINES** (the Rust core's own tempo sections as red lines), the
+  **segmented grid** on bands, a **one-line oracle** and **Beat This!'s offset** for
+  the whole song: each lost more maps than it fixed on bands.
+
+---
+
 ## Unreleased — 2026-11-08 · Rankable on notes, beside the worst beat
 
 ### Changed

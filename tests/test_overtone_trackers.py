@@ -1,4 +1,5 @@
 """Engine tests: The fallback trackers, Beat This!, red lines from beats, phrases and the octave."""
+import dataclasses
 import json
 import sys
 import tempfile
@@ -925,6 +926,58 @@ class OctaveCapTests(unittest.TestCase):
         b = self._analysis([TimingPoint(0.0, 280.0, 1.0, 0)], 60000.0 / 280)
         with mock.patch.object(overtone, "OCTAVE_CAP", False):
             self.assertIs(overtone._cap_octaves(b), b)
+
+
+class PhaseBeatThisTests(unittest.TestCase):
+    """PHASE_BEAT_THIS: a line half a beat off Beat This!'s beats moves onto them."""
+
+    BEAT = 60000.0 / 190
+
+    def _analysis(self, points, duration=30.0):
+        import overtone
+        return overtone.Analysis(source="x", duration=duration, beats=np.zeros(0), local_bpms=np.zeros(0),
+                                 points=points, hop_length=512, sample_rate=44100, subdivision=1.0,
+                                 attack_times=np.zeros(0), attack_weights=np.zeros(0), engine="legacy")
+
+    def heard(self, start_ms, duration=30.0):
+        return lambda: np.arange(start_ms, duration * 1000.0, self.BEAT) / 1000.0
+
+    def test_a_line_on_the_offbeat_moves_half_a_beat(self):
+        import overtone
+        a = self._analysis([TimingPoint(self.BEAT / 2, 190.0, 1.0, 0)])
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", True):
+            out = overtone._phase_by_beat_this(a, self.heard(self.BEAT))
+        self.assertAlmostEqual(out.points[0].offset_ms, self.BEAT, delta=0.01)
+        self.assertEqual(out.points[0].bpm, 190.0)
+        self.assertGreater(out.beats.size, 0)
+
+    def test_a_line_on_the_beats_is_left_alone(self):
+        import overtone
+        a = self._analysis([TimingPoint(self.BEAT, 190.0, 1.0, 0)])
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", True):
+            out = overtone._phase_by_beat_this(a, self.heard(self.BEAT + 4.0))
+        self.assertIs(out, a)
+
+    def test_off_or_without_the_network_nothing_moves(self):
+        import overtone
+        a = self._analysis([TimingPoint(self.BEAT / 2, 190.0, 1.0, 0)])
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", False):
+            self.assertIs(overtone._phase_by_beat_this(a, self.heard(self.BEAT)), a)
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", True):
+            self.assertIs(overtone._phase_by_beat_this(a, lambda: None), a)
+
+    def test_the_judge_reads_the_votes_beats_without_a_second_run(self):
+        from overtone import beat_this, params
+        y = np.zeros(44100 * 30, dtype=np.float32)
+        times = np.arange(0.0, 30.0, self.BEAT / 1000.0)
+        a = self._analysis([TimingPoint(0.0, 190.0, 1.0, 0)])
+        a = dataclasses.replace(a, engine="precision", attack_times=times, attack_weights=np.ones(times.size))
+        heard = times + 0.004
+        with mock.patch.object(beat_this, "_beat_this_beats", return_value=heard):
+            beat_this._beat_this_vote(a, y, 44100)
+        with mock.patch.object(params, "_BEAT_THIS_JUDGE", [object()]), \
+                mock.patch.object(beat_this, "_beat_this_logits", side_effect=AssertionError("ran twice")):
+            self.assertIs(beat_this._beat_this_judge_beats(y, 44100), heard)
 
 
 class PhaseCheckTests(unittest.TestCase):

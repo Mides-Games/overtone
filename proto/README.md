@@ -178,3 +178,26 @@ accelerandi — up to roughly ±0.4 octave, which covers both the 120→160 and 
 fixtures — are handled well. Anything wider needs the spline, and needs edge windows that
 can actually be fitted. Neither is a reason to delay: the selector means such a track gets
 v3's honest fallback, exactly as today, instead of a wrong curve.
+
+---
+
+## 3. Beat This! against the ranked maps — `beat_lines.py`, `section_lines.py`
+
+Measurements on stage reports (bench/stages.py), scored with bench/rankable.py; no
+audio past the first step.
+
+```bash
+python proto/beat_lines.py beats <report.json>... --out beats.json.gz     # the model, slow
+python proto/beat_lines.py score <report.json>... --beats beats.json.gz --phase
+python proto/section_lines.py <replay.json.gz> <report.json>...           # Rust sections as lines
+```
+
+**`--phase` works and is in the engine** as `PHASE_BEAT_THIS` (2026-11-09): the run's
+lines, each moved half a beat where Beat This!'s beats sit on its half beats. It matched
+the engine run on 44 of 50 bands songs, which is why its anime numbers were trusted.
+
+**Rejected:** lines fitted to Beat This!'s beats (`--changes`, `--multi`), same-BPM
+resets found from them (`--resets`), and the Rust core's sections as lines with the
+change moved onto the attacks (`section_lines.py`). Each broke more ranked maps than
+it fixed: Beat This!'s beats sit on a 20 ms grid, and a section's phase is not the
+map's to 10 ms. Numbers in [`../docs/timeline.md`](../docs/timeline.md).

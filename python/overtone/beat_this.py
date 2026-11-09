@@ -23,7 +23,7 @@ from scipy.ndimage import median_filter
 
 from overtone_paths import app_version, data_root
 
-from . import data_model, params, pipeline, red_lines
+from . import data_model, params, phrases, pipeline, red_lines
 
 
 def _beat_this_frames(heard, sr: int, hop: int, frames: int) -> np.ndarray | None:
@@ -105,6 +105,39 @@ def _song_octave_by_beat_this(analysis: Analysis, heard) -> Analysis:
             offset = min((point.offset_ms, point.offset_ms + 60000.0 / point.bpm), key=distance)
         out.append(replace(point, bpm=target, offset_ms=offset))
     return replace(analysis, points=out)
+
+
+def _phase_by_beat_this(analysis: Analysis, heard) -> Analysis:
+    """Each red line moved half a beat where Beat This!'s beats sit on its
+    half beats (PHASE_BEAT_THIS). Fast punk and metal put the loud snare
+    between the map's beats, and the attack-weighted phase check
+    (PHASE_CHECK) follows the snare; the network was trained on beats."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not params.PHASE_BEAT_THIS or not points or any(getattr(p, "manual", False) for p in points):
+        return analysis
+    found = heard()
+    if found is None or len(found) < params.PHASE_BEAT_THIS_MIN_BEATS:
+        return analysis
+    beats = np.sort(np.asarray(found, dtype=float)) * 1000.0
+    end_ms = float(analysis.duration) * 1000.0
+    lines, moved = [], False
+    for n, p in enumerate(points):
+        offset, bpm = float(p.offset_ms), float(p.bpm)
+        stop = float(points[n + 1].offset_ms) if n + 1 < len(points) else end_ms
+        inside = beats[(beats >= offset) & (beats < stop)]
+        step = 60000.0 / bpm
+        if inside.size >= params.PHASE_BEAT_THIS_MIN_BEATS:
+            def cost(start: float) -> float:
+                ph = np.mod((inside - start) / step, 1.0)
+                return float(np.median(np.minimum(ph, 1.0 - ph)))
+            if cost(offset + 0.5 * step) < params.PHASE_BEAT_THIS_GAIN * cost(offset):
+                offset += 0.5 * step
+                moved = True
+        lines.append((offset, bpm))
+    if not moved:
+        return analysis
+    return phrases._with_lines(analysis, lines,
+                               beats=red_lines._beats_of(lines, float(analysis.duration)))
 
 
 def _load_beat_this():
@@ -250,6 +283,10 @@ def _beat_this_vote(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
     if times.size < 8:
         return analysis
     beats = _beat_this_beats(y, sr)
+    if beats is not None:
+        # the judge loads the same model: its later reads of this decode
+        # (PHASE_BEAT_THIS, the octave checks) take these beats, not a second run
+        params._BEAT_THIS_HEARD[:] = [((id(y), int(y.size), int(sr)), y, beats)]
     if beats is None or beats.size < 8:
         return analysis
     duration = float(analysis.duration)
