@@ -1,4 +1,5 @@
 """Engine tests: The fallback trackers, Beat This!, red lines from beats, phrases and the octave."""
+import dataclasses
 import json
 import sys
 import tempfile
@@ -960,9 +961,23 @@ class PhaseBeatThisTests(unittest.TestCase):
     def test_off_or_without_the_network_nothing_moves(self):
         import overtone
         a = self._analysis([TimingPoint(self.BEAT / 2, 190.0, 1.0, 0)])
-        self.assertIs(overtone._phase_by_beat_this(a, self.heard(self.BEAT)), a)
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", False):
+            self.assertIs(overtone._phase_by_beat_this(a, self.heard(self.BEAT)), a)
         with mock.patch.object(overtone, "PHASE_BEAT_THIS", True):
             self.assertIs(overtone._phase_by_beat_this(a, lambda: None), a)
+
+    def test_the_judge_reads_the_votes_beats_without_a_second_run(self):
+        from overtone import beat_this, params
+        y = np.zeros(44100 * 30, dtype=np.float32)
+        times = np.arange(0.0, 30.0, self.BEAT / 1000.0)
+        a = self._analysis([TimingPoint(0.0, 190.0, 1.0, 0)])
+        a = dataclasses.replace(a, engine="precision", attack_times=times, attack_weights=np.ones(times.size))
+        heard = times + 0.004
+        with mock.patch.object(beat_this, "_beat_this_beats", return_value=heard):
+            beat_this._beat_this_vote(a, y, 44100)
+        with mock.patch.object(params, "_BEAT_THIS_JUDGE", [object()]), \
+                mock.patch.object(beat_this, "_beat_this_logits", side_effect=AssertionError("ran twice")):
+            self.assertIs(beat_this._beat_this_judge_beats(y, 44100), heard)
 
 
 class PhaseCheckTests(unittest.TestCase):

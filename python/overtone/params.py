@@ -597,8 +597,14 @@ SONG_OCTAVE_BEAT_THIS = False
 #: (PHASE_BEAT_THIS): the median beat's distance to the shifted grid under
 #: PHASE_BEAT_THIS_GAIN times its distance to the line's own. Bands-variable
 #: (afbf3a5): 16 of 36 missed single-BPM songs had the exact BPM half a beat
-#: off (fast punk and metal; the snare between the map's beats). Off: measuring.
-PHASE_BEAT_THIS = False
+#: off (fast punk and metal; the snare between the map's beats). On since
+#: 2026-11-09, songs rankable on the worst beat: bands dev 40.2 -> 44.3 %,
+#: held out 41.5 -> 46.3 % (engine run, 0 maps broken); anime one tempo dev
+#: 75.7 -> 78.5 %, held out 71.5 -> 73.5 % (1 song broken); anime tempo
+#: changes dev 22.5 -> 23.9 %, held out 28.0 % unchanged (0 broken). Anime
+#: from proto/beat_lines.py --phase on the afbf3a5 reports, which matched the
+#: engine run on 44 of 50 bands songs.
+PHASE_BEAT_THIS = True
 PHASE_BEAT_THIS_GAIN = 0.5
 PHASE_BEAT_THIS_MIN_BEATS = 8
 

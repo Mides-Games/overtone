@@ -283,6 +283,10 @@ def _beat_this_vote(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
     if times.size < 8:
         return analysis
     beats = _beat_this_beats(y, sr)
+    if beats is not None:
+        # the judge loads the same model: its later reads of this decode
+        # (PHASE_BEAT_THIS, the octave checks) take these beats, not a second run
+        params._BEAT_THIS_HEARD[:] = [((id(y), int(y.size), int(sr)), y, beats)]
     if beats is None or beats.size < 8:
         return analysis
     duration = float(analysis.duration)
