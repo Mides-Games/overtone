@@ -877,8 +877,10 @@ OCTAVE_CAP_BPM = 260.0
 #: 2026-11-08 missed 2-7 % of maps that way (145 BPM, 207 ms off: half of 414).
 #: A run of lines on one grid moves by half a beat when the attacks within
 #: PHASE_CHECK_WINDOW (a share of the beat) of its half beats outweigh those
-#: on its beats PHASE_CHECK_MARGIN times. Off: built, not yet measured.
-PHASE_CHECK = False
+#: on its beats PHASE_CHECK_MARGIN times. On since 2026-11-08: replayed on the
+#: three ranked stages (afbf3a5) it fixed 1-7 maps per dev split, rankable
+#: songs +0.6 to +0.8 points, with held out unchanged and no map broken.
+PHASE_CHECK = True
 PHASE_CHECK_MARGIN = 1.5
 PHASE_CHECK_WINDOW = 0.06
 #: The fewest attacks a run needs before its phase is judged.
