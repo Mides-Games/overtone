@@ -20,6 +20,53 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-09 · Slow attacks heard later; lines the network hears on the main grid rejoin it
+
+### Changed
+
+- The precision engine's red lines move later when the song's attacks are slow to
+  peak (`ATTACK_RISE_LEAD`, `_lead_by_attack_rise`, after the one-line phase): by
+  0.554 ms for each ms the strong on-beat attacks take, on the onset envelope, to
+  reach their peak beyond 11.3 ms, at most 10 ms, never earlier. The lines sit where
+  each attack starts; a mapper puts the beat where it is heard, and a distorted guitar
+  or a soft synth is heard later than a click. The slope and the mean are anime-single
+  dev's: over its 438 songs with one map line and the engine's grid right, the map's own
+  distance to the engine's beat falls 0.554 ms per ms of rise (r = -0.34; bands, not
+  fitted on, -0.31). A fast attack stays on its start, where the accuracy baseline
+  holds it.
+- A red line at another tempo whose Beat This! beats sit on the main line's grid, and
+  far off its own, goes back onto it (`FOREIGN_LINES_BEAT_THIS`,
+  `_foreign_lines_by_beat_this`): a section read at 2/3 or 4/3 of the song's beat
+  (Mili's *Paper Bouquet*: 212, then 130.73 from 16 s) is still the song's beat to the
+  network.
+
+### Measured
+
+Replayed with `bench/replay.py` on the 2026-11-09 master runs (commit 17a75d0), the lead
+refitted on the replayed dev maps; "before" is master, so each column adds to the last.
+
+| stage | split | master | + one-line phase and measure grid | + foreign lines and attack rise | exact maps |
+|---|---|---|---|---|---|
+| bands-variable | dev | 45.1 % | 47.5 % | 49.2 % | 29.6 → 43.9 % |
+| bands-variable | held out | 48.8 % | 51.2 % | 51.2 % | 38.5 → 43.6 % |
+| anime-single | dev | 78.5 % | 81.9 % | 83.3 % | 51.3 → 58.7 % |
+| anime-single | held out | 73.5 % | 76.5 % | 79.5 % | 49.2 → 57.9 % |
+
+The attack rise is fitted on anime-single dev; anime-single held out and both bands
+splits are songs it never saw.
+
+### Rejected / tried and dropped
+
+- **Moving fast attacks earlier as well** (the regression both ways): anime held out
+  0.5 points more, but a click would leave its start and the synthetic benchmark's
+  5 ms with it.
+- **Twice or one and a half times the fitted slope**: worse on every split (anime held
+  out 79.5 → 76.5 and 79.0 %).
+- **The rise read as the envelope's centroid over 80 ms**: r = +0.20 on bands but
+  +0.04 on anime.
+
+---
+
 ## Unreleased — 2026-11-09 · One-line songs on all their attacks' phase; an unsure measure grid no longer places the lines
 
 ### Changed

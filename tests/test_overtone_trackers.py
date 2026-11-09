@@ -978,6 +978,97 @@ class OneLinePhaseTests(unittest.TestCase):
             self.assertIs(overtone._one_line_phase(a), a)
 
 
+class AttackRiseLeadTests(unittest.TestCase):
+    """A song whose attacks are slow to peak is heard later than its attacks
+    start, so its lines move later; a fast one stays on its starts."""
+
+    @staticmethod
+    def _analysis(rise_ms, bpm=180.0, engine="precision"):
+        import overtone
+        sr, hop = 44100, 128
+        fps = sr / hop
+        step = 60.0 / bpm
+        times = 0.5 + np.arange(300) * step
+        env = np.zeros(int((times[-1] + 1.0) * fps))
+        for t in times:
+            start = int(round(t * fps))
+            peak = start + int(round(rise_ms / 1000.0 * fps))
+            env[start:peak + 1] = np.linspace(0.1, 1.0, peak - start + 1)
+            env[peak + 1:peak + 8] = np.linspace(0.9, 0.1, 7)
+        return overtone.Analysis(source="x", duration=float(times[-1] + 1.0), beats=times.copy(),
+                                 local_bpms=np.zeros(0), points=[TimingPoint(500.0, bpm, 0.5, 0)],
+                                 hop_length=hop, sample_rate=sr, subdivision=1.0, onset=env,
+                                 attack_times=times, attack_weights=np.ones(times.size), engine=engine)
+
+    def test_the_rise_is_read_from_the_envelope(self):
+        import overtone
+        self.assertAlmostEqual(overtone._attack_rise_ms(self._analysis(20.0)), 20.0, delta=3.0)
+
+    def test_slow_attacks_move_the_lines_later(self):
+        import overtone
+        a = self._analysis(21.3)
+        out = overtone._lead_by_attack_rise(a)
+        later = out.points[0].offset_ms - 500.0
+        rise = overtone._attack_rise_ms(a)
+        self.assertAlmostEqual(later, overtone.params.ATTACK_RISE_SLOPE * (rise - overtone.params.ATTACK_RISE_MEAN_MS),
+                               delta=0.01)
+        self.assertGreater(later, 4.0)
+        self.assertAlmostEqual(float(out.beats[0] - a.beats[0]) * 1000.0, later, delta=0.01)
+
+    def test_the_move_is_capped(self):
+        import overtone
+        out = overtone._lead_by_attack_rise(self._analysis(55.0))
+        self.assertAlmostEqual(out.points[0].offset_ms - 500.0, overtone.params.ATTACK_RISE_MAX_MS, delta=0.01)
+
+    def test_fast_attacks_and_other_engines_stay(self):
+        import overtone
+        fast = self._analysis(3.0)
+        self.assertIs(overtone._lead_by_attack_rise(fast), fast)
+        legacy = self._analysis(25.0, engine="legacy")
+        self.assertIs(overtone._lead_by_attack_rise(legacy), legacy)
+        with mock.patch.object(overtone.params, "ATTACK_RISE_LEAD", False):
+            slow = self._analysis(25.0)
+            self.assertIs(overtone._lead_by_attack_rise(slow), slow)
+
+
+class ForeignLinesTests(unittest.TestCase):
+    """A line at another tempo that Beat This! hears on the song's main grid
+    goes back onto it."""
+
+    @staticmethod
+    def _analysis(points, duration=120.0):
+        import overtone
+        return overtone.Analysis(source="x", duration=duration, beats=np.zeros(0), local_bpms=np.zeros(0),
+                                 points=points, hop_length=512, sample_rate=44100, subdivision=1.0,
+                                 attack_times=np.zeros(0), attack_weights=np.zeros(0), engine="precision")
+
+    def test_a_line_the_network_hears_on_the_main_grid_rejoins_it(self):
+        import overtone
+        step = 60000.0 / 212.0
+        heard = (226.0 + np.arange(int(118000 / step)) * step) / 1000.0
+        # Paper Bouquet: 212, then a line at 130.73 from 90 s the beats never left
+        a = self._analysis([TimingPoint(226.0, 212.0, 0.5, 0), TimingPoint(90000.0, 130.73, 0.5, 1)])
+        out = overtone._foreign_lines_by_beat_this(a, lambda: heard)
+        self.assertEqual([(round(p.offset_ms), p.bpm) for p in out.points], [(226, 212.0)])
+
+    def test_a_real_tempo_change_stays(self):
+        import overtone
+        first = 226.0 + np.arange(int(89774 / (60000.0 / 212.0))) * (60000.0 / 212.0)
+        second = 90000.0 + np.arange(int(30000 / (60000.0 / 150.0))) * (60000.0 / 150.0)
+        heard = np.concatenate([first, second]) / 1000.0
+        a = self._analysis([TimingPoint(226.0, 212.0, 0.5, 0), TimingPoint(90000.0, 150.0, 0.5, 1)])
+        self.assertIs(overtone._foreign_lines_by_beat_this(a, lambda: heard), a)
+
+    def test_without_beats_or_off_it_leaves_the_lines(self):
+        import overtone
+        a = self._analysis([TimingPoint(226.0, 212.0, 0.5, 0), TimingPoint(90000.0, 130.73, 0.5, 1)])
+        self.assertIs(overtone._foreign_lines_by_beat_this(a, lambda: None), a)
+        step = 60000.0 / 212.0
+        heard = (226.0 + np.arange(int(118000 / step)) * step) / 1000.0
+        with mock.patch.object(overtone.params, "FOREIGN_LINES_BEAT_THIS", False):
+            self.assertIs(overtone._foreign_lines_by_beat_this(a, lambda: heard), a)
+
+
 class PhaseBeatThisTests(unittest.TestCase):
     """PHASE_BEAT_THIS: a line half a beat off Beat This!'s beats moves onto them."""
 

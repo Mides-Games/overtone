@@ -1072,6 +1072,61 @@ def _one_line_phase(analysis: Analysis) -> Analysis:
     return phrases._with_lines(analysis, lines, beats=_beats_of(lines, float(analysis.duration)))
 
 
+def _attack_rise_ms(analysis: Analysis) -> float | None:
+    """How long the song's attacks take to peak: the median time from a
+    strong attack on the first line's grid (the stronger half, within a tenth
+    of a beat) to its onset envelope's highest frame within
+    ATTACK_RISE_REACH_S. None with fewer than 20 such attacks."""
+    points = list(analysis.points)
+    env = getattr(analysis, "onset", None)
+    if not points or env is None or len(env) < 16 or analysis.hop_length <= 0:
+        return None
+    env = np.asarray(env, dtype=float)
+    fps = float(analysis.sample_rate) / float(analysis.hop_length)
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    if times.size < 20 or points[0].bpm <= 0:
+        return None
+    offset, step = points[0].offset_ms / 1000.0, 60.0 / points[0].bpm
+    on = np.abs(times - (offset + np.round((times - offset) / step) * step)) < 0.1 * step
+    times, weights = times[on], weights[on]
+    if times.size < 20:
+        return None
+    reach = int(params.ATTACK_RISE_REACH_S * fps)
+    rise = []
+    for t in times[weights >= np.percentile(weights, 50)]:
+        start = int(round(t * fps))
+        frames = env[start:start + reach]
+        if frames.size >= 3:
+            rise.append(float(np.argmax(frames)) / fps * 1000.0)
+    return float(np.median(rise)) if len(rise) >= 20 else None
+
+
+def _lead_by_attack_rise(analysis: Analysis) -> Analysis:
+    """Every red line later by ATTACK_RISE_SLOPE ms for each ms the song's
+    attacks take to peak beyond ATTACK_RISE_MEAN_MS, at most
+    ATTACK_RISE_MAX_MS (ATTACK_RISE_LEAD; the precision engine's lines).
+
+    The lines sit where each attack starts; a mapper puts the beat where it
+    is heard, and a slow attack (a distorted guitar, a soft synth) is heard
+    later than a click. Fitted on anime-single's dev songs: the map's own
+    distance to the engine's beat falls 0.554 ms per ms of rise (r = -0.34;
+    bands, not fitted on, -0.31). Never earlier: a fast attack stays on its
+    start, where the accuracy baseline holds it."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not params.ATTACK_RISE_LEAD or not points or getattr(analysis, "engine", "") != "precision" \
+            or any(getattr(p, "manual", False) for p in points):
+        return analysis
+    rise = _attack_rise_ms(analysis)
+    if rise is None:
+        return analysis
+    later = min(params.ATTACK_RISE_MAX_MS, params.ATTACK_RISE_SLOPE * (rise - params.ATTACK_RISE_MEAN_MS))
+    if later <= 0.0:
+        return analysis
+    return replace(analysis, points=[replace(p, offset_ms=p.offset_ms + later) for p in points],
+                   beats=np.asarray(analysis.beats, dtype=float) + later / 1000.0)
+
+
 def _snap_constant_line(analysis: Analysis) -> Analysis:
     """A fallback song's one red line at the whole BPM beside it, on its
     attacks' phase, where they agree (_snap_whole_lines). _constant_grid reads
