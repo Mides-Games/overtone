@@ -83,6 +83,7 @@ EXPERIMENTS = {
     "song-octave": {"SONG_OCTAVE_BEAT_THIS": True},
     "phase-beat-this": {"PHASE_BEAT_THIS": True},
     "phase-beat-this-octave": {"PHASE_BEAT_THIS": True, "SONG_OCTAVE_BEAT_THIS": True},
+    "collapse-lines": {"COLLAPSE_LINES_BEAT_THIS": True},
     "both": {"CONSTANT_GRID": True, "SONG_OCTAVE_BEAT_THIS": True},
     "constant-grid-loose": {"CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 30.0,
                             "CONSTANT_GRID_SHARE": 0.8},

@@ -181,7 +181,7 @@ v3's honest fallback, exactly as today, instead of a wrong curve.
 
 ---
 
-## 3. Beat This! against the ranked maps — `beat_lines.py`, `section_lines.py`
+## 3. Beat This! against the ranked maps — `beat_lines.py`, `collapse_lines.py` and others
 
 Measurements on stage reports (bench/stages.py), scored with bench/rankable.py; no
 audio past the first step.
@@ -190,6 +190,11 @@ audio past the first step.
 python proto/beat_lines.py beats <report.json>... --out beats.json.gz     # the model, slow
 python proto/beat_lines.py score <report.json>... --beats beats.json.gz --phase
 python proto/section_lines.py <replay.json.gz> <report.json>...           # Rust sections as lines
+python proto/collapse_lines.py <report.json>... --beats beats.json.gz      # one line for several
+python proto/collapse_lines.py <report.json>... --beats beats.json.gz --engine  # the engine's own rule
+python proto/phase_share.py <report.json>... --beats beats.json.gz --share 0 0.75  # the phase check, replayed
+python proto/miss_causes.py <report.json>... --list                       # why each song misses
+python proto/show_lines.py <report.json>...                               # map lines beside the engine's
 ```
 
 **`--phase` works and is in the engine** as `PHASE_BEAT_THIS` (2026-11-09): the run's
@@ -201,3 +206,21 @@ resets found from them (`--resets`), and the Rust core's sections as lines with 
 change moved onto the attacks (`section_lines.py`). Each broke more ranked maps than
 it fixed: Beat This!'s beats sit on a 20 ms grid, and a section's phase is not the
 map's to 10 ms. Numbers in [`../docs/timeline.md`](../docs/timeline.md).
+
+**`collapse_lines.py` works and is in the engine** as `COLLAPSE_LINES_BEAT_THIS`
+(2026-11-09): lines within 4 % of the longest line's BPM put on its grid when Beat
+This!'s beats sit on it within twice their distance to the several grids. Lines at
+another tempo, a meter change, a long line's phase reset and a line whose beats keep
+its own tempo (a fit over them) stay. `--engine` scores the engine's own function, so
+the simulation cannot drift from it; the bands engine run matched it to the song.
+`phase_share.py` replays the half-beat check the same way; requiring 75 % of the
+beats on the half beat broke anime one-tempo maps, so only lines in a meter other than
+4 need it.
+
+**Also rejected (2026-11-09):** Beat This!'s peaks placed between frames
+(`beat_subframe.py`, `beat_lines.py beats --subframe`): within 10 ms of the map 70 ->
+81 % of beats, yet neither `--phase` nor `--resets` gains from it. Each line's offset
+nudged toward the network's beats (`offset_by_beats.py`): bands and anime one tempo
+gain, anime tempo changes held out loses 1-3 points in every variant. Fragmented
+outputs replaced by one line through the beats (`--fragmented`) and the network's long
+sections of another tempo spliced into the engine's line (`--insert`): nothing fixed.

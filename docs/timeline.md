@@ -20,6 +20,80 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-09 · Lines at one tempo collapsed into one
+
+### Changed
+
+- `COLLAPSE_LINES_BEAT_THIS` on: after the half-beat check, when lines within 4 % of the
+  longest line's BPM cover 60 % of the song, they take that line's grid (a run of them
+  becomes one line, on the grid's beat nearest where it starts) if Beat This!'s beats
+  inside them sit on it within twice their median distance to their own grids
+  (`_collapse_by_beat_this`). Lines at another tempo stay as they are, and so does a
+  line where the meter changes (on the one grid, with its own meter): a signature
+  change at one tempo is a red line.
+- What the song's median would hide keeps its lines: a line 40 s or longer that the one
+  grid leaves more than 10 ms and twice worse off (a real phase reset), and a line
+  whose beats keep its own tempo, read from a fit over them, more than 0.5 % from the
+  one grid's where they sit on a steady grid (a real small tempo change).
+
+### Fixed
+
+- **The `signatures` gate had failed since `PHASE_BEAT_THIS` went on** (lines 3 and 5 of
+  the six-beat bars half a beat late). In those bars the network hears a pulse twice the
+  line's tempo and switches between its halves: 59 % of its beats on the half beat put
+  the median there. A line in a meter other than 4 now also needs 75 % of the beats on
+  the half beat (`PHASE_BEAT_THIS_SHARE`); 4/4 lines keep the rule as measured.
+
+### Why
+
+- The engine sometimes writes a one-tempo song as 2-14 lines at nearly the same BPM, each
+  a few ms out of phase with the last (*No More*: 99.09, 98.97, 99.00 ... where the map
+  has 99). Every such bands song missed; the map has one line.
+
+### Measured
+
+Songs rankable on the worst beat.
+
+| Stage | Dev | Held out | Broken |
+|---|---|---|---|
+| bands (engine run) | 44.3 → 45.1 % | 46.3 → 48.8 % | 0 maps (10 fixed) |
+| anime one tempo (simulated) | 78.5 → 79.1 % | 73.5 % | 0 maps |
+| anime tempo changes (simulated) | 23.9 % | 28.0 % | 0 maps |
+
+Bands on notes, held out: rankable 41.5 → 43.9 %, playable 53.7 → 56.1 %. The anime rows
+come from `proto/collapse_lines.py --engine` (the engine's own function) on the afbf3a5
+reports after `--phase-first`; on bands it gave the engine run's numbers. Without the
+tempo check bands held out reached 51.2 %, but one of its two songs flipped only through
+the lead fitted on dev (26.3 → 26.5 ms), and `tiny-change` (200 → 203.5 BPM) lost its
+change, failing the benchmark and `bpm-snapshot`.
+
+### Rejected / tried and dropped
+
+- **One grid replacing every line** (the first rule: lines within 1 %): a click track's
+  150 BPM intro was collapsed into its 160 BPM body, and *Noble*'s phase reset at 147 s
+  left the 131 s before it 125 ms off while the song's median stayed small.
+- **A fixed drift limit on short lines** (one-grid distance at most 15-50 ms over the
+  line's own): kept `tiny-change`, but at every limit bands dev lost *Aerials*, whose
+  live intro the network cannot follow (its beats spread 248 ms on a 750 ms beat). The
+  tempo fit counts only beats on a steady grid, spread under a tenth of a beat.
+- **75 % of the beats on the half beat on every line**: bands unchanged, anime one tempo
+  dev 79.1 → 78.7 % (19 maps broken, 6 fixed; 0.8: 29 broken).
+- **Each line's offset nudged toward Beat This!'s beats** (a quarter to the whole of the
+  median distance less the network's usual 4 ms lead; `proto/offset_by_beats.py`).
+  Bands held out 46.3 → 48.8 % and anime one tempo 73.5 → 77.5 %, but anime tempo
+  changes held out lost 0.9-3.4 points in every variant (capped, confidence-gated,
+  fixed or fitted lead): songs pushed across the 10 ms line both ways.
+- **Beat This!'s peaks placed between frames** (a parabola through each peak's logit and
+  its neighbours; `proto/beat_subframe.py`). Beats within 10 ms of the map 70 → 81 %,
+  p90 20.0 → 13.7 ms, yet the phase check is unchanged and same-BPM resets still break
+  9-37 maps for 0-5 fixed.
+- **A fragmented output (50-250 lines a second or two long) replaced by one line through
+  the network's beats**: 0 maps fixed; those songs are tempo-mapped live recordings.
+- **The network's long sections of another tempo spliced into the engine's line**: 0
+  maps fixed. Its fitted lines break on every missed beat, so few sections last 20 s.
+
+---
+
 ## Unreleased — 2026-11-09 · Half-beat phase checked against Beat This!
 
 ### Changed
@@ -54,6 +128,9 @@ matched the engine run on 44 of 50 bands songs.
 
 ### Rejected / tried and dropped
 
+- **SONG_OCTAVE_BEAT_THIS on top of the phase check** (bands engine run,
+  `phase-beat-this-octave`): dev 44.3 → 42.6 %, held out 46.3 → 41.5 %, notes held
+  out 41.5 → 34.1 %. Still off.
 - **Same-BPM resets found from Beat This!'s beats** (segment each line where the beats
   leave its grid for 16+ beats, new line at the stretch's mean distance). 0 maps fixed,
   up to 26 broken: the beats sit on a 20 ms grid, so a stretch's offset is not known to

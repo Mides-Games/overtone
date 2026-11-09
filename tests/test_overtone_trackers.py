@@ -958,6 +958,25 @@ class PhaseBeatThisTests(unittest.TestCase):
             out = overtone._phase_by_beat_this(a, self.heard(self.BEAT + 4.0))
         self.assertIs(out, a)
 
+    def test_beats_switching_between_the_halves_leave_the_line(self):
+        # a pulse at twice the line's tempo (the `signatures` gate's six-beat
+        # bars): the network takes one half, then the other; three in five on
+        # the half beats put the median there, the beat is still unknown
+        import overtone
+        six = self._analysis([TimingPoint(0.0, 190.0, 1.0, 0, meter=6, meter_known=True)])
+        four = self._analysis([TimingPoint(0.0, 190.0, 1.0, 0)])
+        k = np.arange(0, 90)
+        beats = k * self.BEAT + np.where(k % 5 < 3, self.BEAT / 2, 0.0)
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", True), \
+                mock.patch.object(overtone, "COLLAPSE_LINES_BEAT_THIS", False):
+            self.assertIs(overtone._phase_by_beat_this(six, lambda: beats / 1000.0), six)
+            with mock.patch.object(overtone, "PHASE_BEAT_THIS_SHARE", 0.0):
+                moved = overtone._phase_by_beat_this(six, lambda: beats / 1000.0)
+            # a 4/4 line keeps the median rule alone, as measured
+            moved4 = overtone._phase_by_beat_this(four, lambda: beats / 1000.0)
+        self.assertAlmostEqual(moved.points[0].offset_ms, self.BEAT / 2, delta=0.01)
+        self.assertAlmostEqual(moved4.points[0].offset_ms, self.BEAT / 2, delta=0.01)
+
     def test_off_or_without_the_network_nothing_moves(self):
         import overtone
         a = self._analysis([TimingPoint(self.BEAT / 2, 190.0, 1.0, 0)])
@@ -965,6 +984,88 @@ class PhaseBeatThisTests(unittest.TestCase):
             self.assertIs(overtone._phase_by_beat_this(a, self.heard(self.BEAT)), a)
         with mock.patch.object(overtone, "PHASE_BEAT_THIS", True):
             self.assertIs(overtone._phase_by_beat_this(a, lambda: None), a)
+
+    def test_lines_at_one_tempo_out_of_phase_collapse_into_one(self):
+        import overtone
+        # three lines at 190, the short middle one 15 ms off the beats: the map has one
+        a = self._analysis([TimingPoint(self.BEAT, 190.0, 1.0, 0),
+                            TimingPoint(self.BEAT * 20 + 15.0, 190.05, 1.0, 0),
+                            TimingPoint(self.BEAT * 30, 190.0, 1.0, 0)])
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", False), \
+                mock.patch.object(overtone, "COLLAPSE_LINES_BEAT_THIS", True):
+            out = overtone._phase_by_beat_this(a, self.heard(self.BEAT))
+        self.assertEqual(len(out.points), 1)
+        self.assertEqual(out.points[0].bpm, 190.0)
+        phase = out.points[0].offset_ms % self.BEAT
+        self.assertLess(min(phase, self.BEAT - phase), 0.01)
+
+    def test_a_meter_change_at_one_tempo_keeps_its_line(self):
+        import overtone
+        # 6/4 at 190, a second 6/4 line 15 ms off, then 3/4 and 6/4: the two
+        # first become one, and each meter change is still a red line on the
+        # one grid, with its own meter
+        a = self._analysis([TimingPoint(self.BEAT, 190.0, 1.0, 0, meter=6, meter_known=True),
+                            TimingPoint(self.BEAT * 13 + 15.0, 190.05, 1.0, 0, meter=6, meter_known=True),
+                            TimingPoint(self.BEAT * 31 + 15.0, 190.05, 1.0, 0, meter=3, meter_known=True),
+                            TimingPoint(self.BEAT * 49, 190.0, 1.0, 0, meter=6, meter_known=True)])
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", False), \
+                mock.patch.object(overtone, "COLLAPSE_LINES_BEAT_THIS", True):
+            out = overtone._phase_by_beat_this(a, self.heard(self.BEAT))
+        self.assertEqual([p.meter for p in out.points], [6, 3, 6])
+        self.assertEqual([p.bpm for p in out.points], [190.0, 190.0, 190.0])
+        self.assertAlmostEqual(out.points[1].offset_ms, self.BEAT * 31, delta=0.01)
+
+    def test_a_phase_reset_between_long_lines_is_kept(self):
+        import overtone
+        # 50 s at 190, then the metronome restarts 100 ms later for 70 s:
+        # the later, longer line's grid would leave the first 50 s off
+        reset = self.BEAT * 158 + 100.0
+        a = self._analysis([TimingPoint(0.0, 190.0, 1.0, 0), TimingPoint(reset, 190.0, 1.0, 0)], duration=120.0)
+        beats = np.concatenate([np.arange(0.0, reset - 1.0, self.BEAT), np.arange(reset, 120000.0, self.BEAT)])
+        beats = beats + np.random.default_rng(7).uniform(-3.0, 3.0, beats.size)  # a network's jitter
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", False), \
+                mock.patch.object(overtone, "COLLAPSE_LINES_BEAT_THIS", True):
+            self.assertIs(overtone._phase_by_beat_this(a, lambda: beats / 1000.0), a)
+            # the song's median alone would have collapsed them
+            with mock.patch.object(overtone, "COLLAPSE_LINES_LONG_S", 1e9):
+                self.assertEqual(len(overtone._phase_by_beat_this(a, lambda: beats / 1000.0).points), 1)
+
+    def test_an_intro_at_another_tempo_keeps_its_line(self):
+        import overtone
+        slow = 60000.0 / 150
+        # the 190 part written as two lines, the first 12 ms off and 190.1
+        a = self._analysis([TimingPoint(0.0, 150.0, 1.0, 0), TimingPoint(slow * 16 + 12.0, 190.1, 1.0, 0),
+                            TimingPoint(slow * 16 + self.BEAT * 30, 190.0, 1.0, 0)], duration=60.0)
+        beats = np.concatenate([np.arange(0.0, slow * 16 - 1.0, slow), slow * 16 + np.arange(0.0, 60000.0 - slow * 16, self.BEAT)])
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", False), \
+                mock.patch.object(overtone, "COLLAPSE_LINES_BEAT_THIS", True):
+            out = overtone._phase_by_beat_this(a, lambda: beats / 1000.0)
+        self.assertEqual([round(p.bpm, 2) for p in out.points], [150.0, 190.0])
+        self.assertAlmostEqual(out.points[1].offset_ms, slow * 16, delta=0.01)
+
+    def test_a_real_tempo_change_is_not_collapsed(self):
+        import overtone
+        slow = 60000.0 / 140
+        a = self._analysis([TimingPoint(0.0, 140.0, 1.0, 0), TimingPoint(slow * 30, 190.0, 1.0, 0)])
+        beats = np.concatenate([np.arange(0.0, slow * 30, slow), slow * 30 + np.arange(0.0, 17000.0, self.BEAT)])
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", False), \
+                mock.patch.object(overtone, "COLLAPSE_LINES_BEAT_THIS", True):
+            self.assertIs(overtone._phase_by_beat_this(a, lambda: beats / 1000.0), a)
+
+    def test_a_small_real_tempo_change_is_not_collapsed(self):
+        # 200 -> 203.5 BPM sits inside the agree window, and on beats rounded
+        # to Beat This!'s 20 ms frames the song's median hides the first 16 s
+        # drifting off the one grid; the tempo its beats keep does not.
+        import overtone
+        a = self._analysis([TimingPoint(500.0, 200.0, 1.0, 0), TimingPoint(16100.0, 203.5, 1.0, 0)], duration=32.0)
+        first = np.arange(500.0, 16100.0, 300.0)
+        first = first + 20.0 * (np.arange(first.size) % 2)  # 320/280 ms, as the network heard it
+        beats = np.round(np.concatenate([first, np.arange(16100.0, 32000.0, 60000.0 / 203.5)]) / 20.0) * 20.0
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", False), \
+                mock.patch.object(overtone, "COLLAPSE_LINES_BEAT_THIS", True):
+            self.assertIs(overtone._phase_by_beat_this(a, lambda: beats / 1000.0), a)
+            with mock.patch.object(overtone, "COLLAPSE_LINES_TEMPO_PCT", 1e9):
+                self.assertEqual(len(overtone._phase_by_beat_this(a, lambda: beats / 1000.0).points), 1)
 
     def test_the_judge_reads_the_votes_beats_without_a_second_run(self):
         from overtone import beat_this, params

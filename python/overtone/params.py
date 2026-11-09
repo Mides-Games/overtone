@@ -607,6 +607,41 @@ SONG_OCTAVE_BEAT_THIS = False
 PHASE_BEAT_THIS = True
 PHASE_BEAT_THIS_GAIN = 0.5
 PHASE_BEAT_THIS_MIN_BEATS = 8
+#: ... and, on a line in a meter other than 4, at least this share of those
+#: beats nearer the half beat than the beat. On a pulse twice the line's tempo
+#: the network switches halves (the `signatures` gate's six-beat bars: 59 % on
+#: the half), and the median alone moved those lines off their proven
+#: downbeat. Not on 4/4 lines: required there, 0.7-0.8 broke 19-29 anime
+#: one-tempo dev maps for 6 fixed (`proto/phase_share.py`).
+PHASE_BEAT_THIS_SHARE = 0.75
+
+#: Several red lines at one tempo put on one grid when Beat This!'s beats sit
+#: on it as well (COLLAPSE_LINES_BEAT_THIS), after the half-beat check: lines
+#: within COLLAPSE_LINES_AGREE_PCT of the longest line's BPM, covering
+#: COLLAPSE_LINES_SHARE of the song, take its grid (a run of them becomes one
+#: line) when the beats inside them sit on it within COLLAPSE_LINES_SLACK
+#: times their distance to their own grids. Lines at another tempo stay, and a
+#: meter change stays a line on the one grid. On since 2026-11-09, songs
+#: rankable on the worst beat: bands dev 44.3 -> 45.1 %, held out 46.3 -> 48.8 %
+#: (engine run, 10 maps fixed, 0 broken); anime one tempo dev 78.5 -> 79.1 %, held out 73.5 %
+#: unchanged; anime tempo changes unchanged; 0 anime maps broken (simulated
+#: with proto/collapse_lines.py --engine, the engine's own function).
+COLLAPSE_LINES_BEAT_THIS = True
+COLLAPSE_LINES_AGREE_PCT = 4.0
+COLLAPSE_LINES_SHARE = 0.6
+COLLAPSE_LINES_SLACK = 2.0
+#: ... and each line at least COLLAPSE_LINES_LONG_S long keeps its beats within
+#: that slack, or COLLAPSE_LINES_FLOOR_MS, of its own grid on the one: a real
+#: phase reset between long lines is not collapsed.
+COLLAPSE_LINES_LONG_S = 40.0
+COLLAPSE_LINES_FLOOR_MS = 10.0
+#: ... and no line whose beats keep its own tempo, more than
+#: COLLAPSE_LINES_TEMPO_PCT from the one grid's: a real small tempo change
+#: (200 -> 203.5 BPM) is not collapsed.
+COLLAPSE_LINES_TEMPO_PCT = 0.5
+#: ... read only where the beats' spread about their fitted grid is at most this
+#: share of a beat: a live intro's 248 ms on a 750 ms beat says no tempo.
+COLLAPSE_LINES_STEADY = 0.1
 
 
 #: Beat This! as an extra voter (Phase 10, 10.3; owner decision 2026-10-24).
