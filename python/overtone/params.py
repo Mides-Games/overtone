@@ -311,6 +311,16 @@ MIN_METER_BARS = 4
 #: the whole track to be one bar in several notations. Measured: signature
 #: changes over a constant bar tile it to 0.0001; 128 -> 150 BPM misses by 0.31.
 BAR_TILE_TOL = 0.02
+#: The measure grid places the red lines only when at least one of its
+#: regions reaches the minimum confidence; otherwise the sections do. A bar
+#: read on noise (Pierce The Veil's Hell Above: a 7-beat bar at 130 BPM, cut
+#: into regions "in" 8, 3, 6 and 12 at 0.24-0.27) left the song one line at
+#: the likeliest of them, 222.857 BPM. Replayed on the 2026-11-09 master runs
+#: (bench/replay.py): bands dev 45.1 -> 45.9 % of songs (15 maps fixed, 0
+#: broken), held out unchanged; anime-single dev 78.5 -> 79.1 % (29 fixed,
+#: 5 broken: one song, 10 ms of phase), held out 73.5 -> 74.5 % (12, 0);
+#: anime-variable unchanged.
+METER_POINTS_CONFIDENT = True
 
 #: Frames decoded at a time: about 24 s of audio at 44.1 kHz, under a tenth
 #: of a second's work for an MP3, so a stop is asked that often.
@@ -642,6 +652,23 @@ COLLAPSE_LINES_TEMPO_PCT = 0.5
 #: ... read only where the beats' spread about their fitted grid is at most this
 #: share of a beat: a live intro's 248 ms on a 750 ms beat says no tempo.
 COLLAPSE_LINES_STEADY = 0.1
+
+#: A song written as one red line takes the phase all its attacks agree on:
+#: their weighted mean distance to its grid, over the attacks within
+#: ONE_LINE_PHASE_TOL of a beat (at least ONE_LINE_PHASE_MIN of them), the
+#: whole song long; its BPM stays. The line came from one section's fit, the
+#: likeliest when none is sure (a live band's sections sit 17-24 ms from their
+#: attacks, under the 0.75 floor, so most bands songs end as that one line).
+#: Replayed on the 2026-11-09 master runs with the lead refitted: bands dev
+#: 45.1 -> 47.5 % of songs, held out 48.8 -> 51.2 % (exact maps 38.5 -> 47.7 %);
+#: anime-single dev 78.5 -> 81.9 %, held out 73.5 -> 76.5 %; anime-variable
+#: unchanged. A median, the stronger half of the attacks, or an iterated
+#: trim did no better; refitting the BPM the same way undid whole-BPM snaps
+#: (held out 48.8 -> 36.6 %), and every line of a multi-line song on its own
+#: span changed nothing.
+ONE_LINE_PHASE = True
+ONE_LINE_PHASE_TOL = 0.1
+ONE_LINE_PHASE_MIN = 32
 
 
 #: Beat This! as an extra voter (Phase 10, 10.3; owner decision 2026-10-24).

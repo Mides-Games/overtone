@@ -20,6 +20,87 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-09 · One-line songs on all their attacks' phase; an unsure measure grid no longer places the lines
+
+### Changed
+
+- A song written as one red line takes the phase all its attacks agree on
+  (`ONE_LINE_PHASE`, `_one_line_phase`, the last of the osu! conventions on either
+  engine): the weighted mean distance of the attacks within a tenth of a beat to the
+  line's grid, the whole song long. Its BPM stays. The line came from one section's
+  fit -- on a live band, whose sections sit 17-24 ms from their attacks and so never
+  reach the 0.75 confidence floor, the likeliest of them -- or from a whole-BPM snap
+  refitted on that section's attacks, while osu! plays it from 0 s to the end
+  (*Dystopia*: 9 ms off the phase the rest of the song keeps).
+
+### Fixed
+
+- The measure grid (`points_from_meter`, Rust `assemble_points`) placed a song's red
+  lines whenever it found a bar and more than one signature region, even when no region
+  reached the confidence floor; the "never an empty map" rule then kept the likeliest
+  region as the song's one line. On Pierce The Veil's *Hell Above* the whole-BPM snap's
+  rebuild read a 7-beat bar at 130 BPM, cut it into regions "in" 8, 3, 6 and 12 at
+  confidence 0.24-0.27, and the song came out as one 222.857 BPM line. Now the sections
+  place the lines unless one measure region is confident (`METER_POINTS_CONFIDENT`, on;
+  `confident_meter` in Rust).
+
+### Measured
+
+Replayed on the 2026-11-09 master runs (commit 17a75d0) with `bench/replay.py`, which
+re-runs every step after the Rust core on the server's own core reports (114 of
+bands' 163 audios, 592 of anime-single's 674; the rest took v3's tracker), with the
+mappers' lead refitted on the replayed dev maps (`--relead`: 26.3 → 27.1 ms on bands).
+The core's own assembly, now fixed too, is not in these numbers.
+
+| stage | split | songs rankable, the measure-grid fix | and the one-line phase | exact maps |
+|---|---|---|---|---|
+| bands-variable | dev | 45.1 → 45.9 % | → 47.5 % | 29.6 → 37.7 % |
+| bands-variable | held out | 48.8 → 48.8 % | → 51.2 % | 38.5 → 47.7 % |
+| anime-single | dev | 78.5 → 79.1 % | → 81.9 % | 51.3 → 56.4 % |
+| anime-single | held out | 73.5 → 74.5 % | → 76.5 % | 49.2 → 54.4 % |
+| anime-variable | both | unchanged | unchanged | unchanged |
+
+The measure-grid fix alone, at the run's lead: bands dev 15 maps fixed, 0 broken;
+anime-single dev 29 fixed, 5 broken (one song, 10 ms of phase), held out 12 fixed, 0
+broken.
+
+### Rejected / tried and dropped
+
+- **The one-line phase from a median, from the stronger half of the attacks, or
+  iterated on a narrower window**: none rankable more songs than the weighted mean
+  (bands dev 45.9, 46.7 and 47.5 % against 47.5 %).
+- **The one line's BPM refitted on all its attacks the same way**: it undid the
+  whole-BPM snaps the maps confirm (bands held out 48.8 → 36.6 %); kept at a whole BPM
+  within 0.02, still 43.9 %.
+- **Every line of a multi-line song on the phase of the attacks in its own span**:
+  no song changed.
+- **The fallback line from the section with the most attacks on it** instead of the
+  likeliest: bands dev +3.3 points but held out -2.5; the one-line phase settles the
+  same phase from every section at once.
+- **A small head on frozen Beat This! to place each beat to the millisecond**
+  (`proto/beat_head.py`): trained on CPU on 457 songs (bands and anime-single, 22 kHz
+  windows of ±60 ms around each network beat, target the map's beat). On 190 held-out
+  songs it places more single beats within 5 ms than the network's frames or a
+  parabola peak (56.6 % against 42.8 and 47.8) but not more songs' median within 5 ms
+  of the map (68.9 % against 72.6 and 67.9): a line's offset is fitted over all its
+  beats, so the per-beat noise it removes was already averaged out, and what the
+  offset misses is each mapper's own lead, which the audio around a beat does not
+  show. It overfit after 16 epochs.
+- **A line's BPM refitted from Beat This!'s slope over the whole span it governs**
+  (`proto/line_drift.py`): the network's beats are not steady to hundredths of a BPM
+  (it reads 159.93 on songs the maps confirm at 160.00). At a 10 ms drift floor, bands
+  held out 48.8 → 43.9 % (11 maps fixed, 34 broken); a Theil-Sen slope with a
+  consistency check fixed nothing and broke 7.
+- **A line split where Beat This!'s beats sit steadily off its phase**
+  (`proto/phase_split.py`, 15-35 ms over 32 beats or more): no song gained.
+- **Every off flag among the steps after the core, replayed on bands** (change
+  points, change on beat, octave continuity and smoothing, song octave by Beat This!,
+  lines on downbeats; and drift following, phrase lines, tidying, steady merging, the
+  octave cap and the phase check turned off): none rankable a song more; change on
+  beat lost 10 points held out, drift following off 2.5.
+
+---
+
 ## Unreleased — 2026-11-09 · Lines at one tempo collapsed into one
 
 ### Changed

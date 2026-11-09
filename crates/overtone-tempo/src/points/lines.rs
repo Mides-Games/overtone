@@ -122,6 +122,18 @@ pub fn snap_timing_points(points: &[TimingPoint]) -> Vec<TimingPoint> {
     snapped
 }
 
+/// The measure grid's lines when one of its regions is sure of its signature
+/// (v3 `METER_POINTS_CONFIDENT`), else None so the sections place them. A bar
+/// read on noise, cut into regions none of which reaches the floor, otherwise
+/// left the song one line at the likeliest of them (Hell Above: 222.857 BPM
+/// for a 130 BPM song).
+pub fn confident_meter(
+    points: Option<Vec<TimingPoint>>,
+    min_confidence: f64,
+) -> Option<Vec<TimingPoint>> {
+    points.filter(|points| points.iter().any(|p| p.confidence >= min_confidence))
+}
+
 /// Full red-line assembly mirroring `_assemble_analysis` at `factor = 1`:
 /// measure grid wins when it applies, else per-section placement, then the
 /// confidence and convergence filters, then snapping.
@@ -137,7 +149,11 @@ pub fn assemble_points(
     min_delta: f64,
     min_confidence: f64,
 ) -> Vec<TimingPoint> {
-    let points = match points_from_meter(sections, times, weights, 1.0) {
+    let meter = confident_meter(
+        points_from_meter(sections, times, weights, 1.0),
+        min_confidence,
+    );
+    let points = match meter {
         Some(meter_points) => meter_points,
         None => {
             let measures = section_measures(sections, times, weights);

@@ -928,6 +928,56 @@ class OctaveCapTests(unittest.TestCase):
             self.assertIs(overtone._cap_octaves(b), b)
 
 
+class OneLinePhaseTests(unittest.TestCase):
+    """A song written as one red line sits on the phase all its attacks agree
+    on, not on the one section its line came from."""
+
+    @staticmethod
+    def _analysis(points, attacks_ms, duration=200.0):
+        import overtone
+        times = np.asarray(attacks_ms, dtype=float) / 1000.0
+        weights = np.where(np.arange(times.size) % 4 == 0, 3.0, 1.0)
+        return overtone.Analysis(source="x", duration=duration, beats=np.zeros(0), local_bpms=np.zeros(0),
+                                 points=points, hop_length=512, sample_rate=44100, subdivision=1.0,
+                                 attack_times=times, attack_weights=weights, engine="precision")
+
+    def test_the_line_moves_onto_the_attacks_and_keeps_its_bpm(self):
+        import overtone
+        step = 60000.0 / 178.0
+        played = 1087.0 + np.arange(400) * step
+        # the line came from a section 9 ms late (Dystopia)
+        a = self._analysis([TimingPoint(1096.0, 178.0, 0.5, 0)], played)
+        out = overtone._one_line_phase(a)
+        self.assertEqual(len(out.points), 1)
+        self.assertEqual(out.points[0].bpm, 178.0)
+        self.assertAlmostEqual(out.points[0].offset_ms, 1087.0, delta=0.01)
+
+    def test_attacks_off_the_beat_do_not_pull_it(self):
+        import overtone
+        step = 60000.0 / 200.0
+        beats = 500.0 + np.arange(300) * step
+        offbeats = beats[:-1] + step / 2 + 7.0
+        a = self._analysis([TimingPoint(503.0, 200.0, 0.5, 0)], np.sort(np.concatenate([beats, offbeats])))
+        out = overtone._one_line_phase(a)
+        self.assertAlmostEqual(out.points[0].offset_ms, 500.0, delta=0.01)
+
+    def test_several_lines_and_few_attacks_are_left_alone(self):
+        import overtone
+        step = 60000.0 / 178.0
+        played = 1087.0 + np.arange(400) * step
+        two = self._analysis([TimingPoint(1096.0, 178.0, 0.5, 0), TimingPoint(90000.0, 150.0, 0.5, 1)], played)
+        self.assertIs(overtone._one_line_phase(two), two)
+        few = self._analysis([TimingPoint(1096.0, 178.0, 0.5, 0)], played[:20])
+        self.assertIs(overtone._one_line_phase(few), few)
+
+    def test_off_it_leaves_the_line(self):
+        import overtone
+        step = 60000.0 / 178.0
+        a = self._analysis([TimingPoint(1096.0, 178.0, 0.5, 0)], 1087.0 + np.arange(400) * step)
+        with mock.patch.object(overtone.params, "ONE_LINE_PHASE", False):
+            self.assertIs(overtone._one_line_phase(a), a)
+
+
 class PhaseBeatThisTests(unittest.TestCase):
     """PHASE_BEAT_THIS: a line half a beat off Beat This!'s beats moves onto them."""
 

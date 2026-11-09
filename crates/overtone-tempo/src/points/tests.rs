@@ -563,3 +563,16 @@ fn per_section_meter_comes_from_each_section() {
     // Too few attacks: unknown bar, anchor to a beat.
     assert_eq!(measures[1], ("4/4".to_string(), 0, 1));
 }
+
+#[test]
+fn a_measure_grid_unsure_of_every_region_leaves_the_lines_to_the_sections() {
+    let unsure = vec![
+        TimingPoint::new(-2096.0, 148.571, 0.249, 0),
+        TimingPoint::new(56058.0, 222.857, 0.274, 1),
+    ];
+    assert!(confident_meter(Some(unsure.clone()), 0.75).is_none());
+    let mut sure = unsure;
+    sure[1].confidence = 0.8;
+    assert_eq!(confident_meter(Some(sure), 0.75).map(|p| p.len()), Some(2));
+    assert!(confident_meter(None, 0.75).is_none());
+}

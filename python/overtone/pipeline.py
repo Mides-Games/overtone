@@ -48,6 +48,13 @@ def _assemble_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int, fit
     # and the signature moves, the measure grid places the red lines instead.
     points = precision_grid.points_from_meter(sections, fit["times"], fit["weights"],
                                persistence, factor)
+    if (points is not None and params.METER_POINTS_CONFIDENT
+            and not any(p.confidence >= min_confidence for p in points)):
+        # A bar read on noise splits into regions none of which is sure of
+        # its signature; the "never empty" rule below then kept the likeliest
+        # of them as the song's one line (Hell Above: 130 BPM became a
+        # 222.857 line of a 7-beat bar in 12). The sections place the lines.
+        points = None
     if points is None:
         measures = precision_grid.section_measures(sections, fit["times"], fit["weights"])
         points = precision_grid._points_from_sections(sections, fit["first_sound"], persistence,
@@ -267,8 +274,8 @@ def _precision_conventions(analysis: Analysis, y_mix: np.ndarray, sr: int, min_d
         analysis, before, before_beats, lambda: red_lines._beat_this_tempo(y_mix, sr))
     analysis = beat_this._song_octave_by_beat_this(analysis, lambda: beat_this._beat_this_judge_beats(y_mix, sr))
     heard = lambda: beat_this._beat_this_judge_beats(y_mix, sr)  # noqa: E731 - one judge, read once
-    return beat_this._phase_by_beat_this(phrases._tidy_bpms(octave_choice._lines_on_downbeats(phrases._phrase_lines(phrases._snap_whole_points(tempo_judge._tempo_judge(octave_choice._octave_rule(octave_choice._smooth_octaves(
-        red_lines._fold_lines_to_song_octave(analysis, heard))), lambda: (y_mix, sr)))))), heard)
+    return red_lines._one_line_phase(beat_this._phase_by_beat_this(phrases._tidy_bpms(octave_choice._lines_on_downbeats(phrases._phrase_lines(phrases._snap_whole_points(tempo_judge._tempo_judge(octave_choice._octave_rule(octave_choice._smooth_octaves(
+        red_lines._fold_lines_to_song_octave(analysis, heard))), lambda: (y_mix, sr)))))), heard))
 
 
 def _splice_gaps(grid: Analysis, tracked: Analysis,
