@@ -272,6 +272,8 @@ def score_song(song: dict, analysis: dict) -> list[dict]:
         try:
             osu_hash = audio_identity(Path(entry["path"]))
             reds = ta.read_osu_red_lines(entry["path"])
+            import rankable
+            notes = rankable.note_times(entry["path"])
         except (OSError, ValueError) as exc:
             if locked:
                 raise ValueError(f"locked map unreadable: {entry['path']}") from exc
@@ -298,6 +300,8 @@ def score_song(song: dict, analysis: dict) -> list[dict]:
                     "path": analysis["path"], "map_lines": len(reds),
                     "duration_s": analysis.get("duration_s"),
                     "detected_lines": len(detected), "rows": rows,
+                    # hit-object starts, for bench/rankable.py's worst note
+                    "notes": notes,
                     "change_points": change_points,
                     "lines": [[round(float(o), 1), round(float(b), 3)] for o, b in detected],
                     "d_map": d_map, "d_eng": d_eng, "bar_hits": bar_hits,
@@ -731,9 +735,10 @@ def main(argv: list[str] | None = None) -> int:
     # The headline the owner asked for (2026-11-08): per map, would its
     # worst beat pass a modder (bench/rankable.py), before any mean.
     import rankable
+    note_lead = rankable.note_shift(dev)
     for m in maps:
-        m["rank"] = rankable.verdict(m, beat_shift)
-    summary["rankable"] = {"lead_ms": beat_shift}
+        m["rank"] = rankable.verdict(m, beat_shift) | rankable.note_verdict(m, note_lead)
+    summary["rankable"] = {"lead_ms": beat_shift, "note_lead_ms": note_lead}
     print(f"\n  rankable (worst beat within {rankable.RANKABLE_MS:g} ms, exact within"
           f" {rankable.EXACT_MS:g} ms, lead {beat_shift:+.1f} ms):")
     pairs = rankable.ranked_pairs(maps)

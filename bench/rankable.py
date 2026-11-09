@@ -42,6 +42,16 @@ is printed beside it.
     .venv/Scripts/python.exe bench/rankable.py <dev report> <held-out report>  # one stage, two runs
     .venv/Scripts/python.exe bench/rankable.py <report> --worst 20   # the dev misses to look at
 
+**Worst note** (owner's decision, 2026-11-08), printed beside it: the beat
+grid counts beats no one plays (the clipped beat before a mapper's
+metronome reset, the outro after the last object), and two ranked maps of
+one audio failed the worst beat on those alone. Each of the map's hit objects
+is taken at its own snap (1/1, 1/2, 1/4, 1/3 ...) of the map's timing and
+looked up on the engine's grid at that snap: its distance, less the dev
+part's median, is how far the engine would put that note. Rankable within
+10 ms, playable within 20 ms. Needs the map rows' ``notes`` (stage reports
+since 2026-11-08); older reports print the worst beat only.
+
 Reads a stage report (bench/stages.py writes one; bench/remote.py result
 fetches the server's) and nothing else. A measurement, not a gate.
 """
@@ -57,6 +67,12 @@ from pathlib import Path
 import numpy as np
 
 EXACT_MS = 5.0
+#: Worst note within this many ms: a player would not feel the timing.
+PLAYABLE_MS = 20.0
+#: Snaps a note is read at, the coarsest first; a note within SNAP_MS of a tick
+#: of the map's own grid at that snap is on it.
+SNAPS = (1, 2, 4, 3, 6, 8, 12, 16)
+SNAP_MS = 2.5
 RANKABLE_MS = 10.0
 #: A map's own offset is the median beat distance within this window.
 OFFSET_WINDOW_MS = 50.0
@@ -110,6 +126,76 @@ def beat_errors(map_lines, engine_lines, duration_s: float) -> np.ndarray | None
     if mb.size == 0 or eb.size == 0 or mb_all.size == 0 or eb_all.size == 0:
         return None
     return np.concatenate([nearest(mb, eb_all), -nearest(eb, mb_all)])
+
+
+def note_times(osu_path) -> list[int]:
+    """The start of every hit object in a .osu, sorted, whole ms (as osu! stores them)."""
+    times, inside = set(), False
+    with open(osu_path, encoding="utf-8-sig", errors="replace") as handle:
+        for line in handle:
+            text = line.strip()
+            if text.startswith("["):
+                inside = text == "[HitObjects]"
+                continue
+            fields = text.split(",") if inside and text else []
+            if len(fields) > 3:
+                try:
+                    times.add(int(round(float(fields[2]))))
+                except ValueError:
+                    continue
+    return sorted(times)
+
+
+def _line_at(lines: list[tuple[float, float]], t: float) -> tuple[float, float]:
+    """The red line governing ``t``: the last one at or before it, else the first."""
+    starts = [o for o, _ in lines]
+    return lines[max(0, int(np.searchsorted(starts, t + 0.5, side="right")) - 1)]
+
+
+def note_errors(map_lines, engine_lines, notes) -> np.ndarray | None:
+    """Each note's signed distance (ms, positive when the engine is late) to
+    the engine's tick at the note's own snap. None without a grid or notes."""
+    map_lines = [(o, b) for o, b in map_lines if b > 0]
+    engine_lines = [(o, b) for o, b in engine_lines if b > 0]
+    if not map_lines or not engine_lines or not notes:
+        return None
+    out = np.empty(len(notes))
+    for n, t in enumerate(notes):
+        offset, bpm = _line_at(map_lines, t)
+        step = 60000.0 / bpm
+        phase = (t - offset) / step
+        snap = next((d for d in SNAPS if abs(phase * d - round(phase * d)) * step / d <= SNAP_MS),
+                    SNAPS[-1])
+        e_offset, e_bpm = _line_at(engine_lines, t)
+        tick = 60000.0 / e_bpm / snap
+        out[n] = e_offset + round((t - e_offset) / tick) * tick - t
+    return out
+
+
+def _engine_lines(m: dict) -> list[tuple[float, float]]:
+    return [(float(o), float(b)) for o, b, *_ in m.get("lines") or []]
+
+
+def note_shift(maps: list[dict]) -> float | None:
+    """The mappers' lead on notes: the median of the dev maps' median note distances."""
+    medians = []
+    for m in maps:
+        e = note_errors(map_lines_of(m), _engine_lines(m), m.get("notes"))
+        if e is not None:
+            medians.append(float(np.median(e)))
+    return float(np.median(medians)) if medians else None
+
+
+def note_verdict(m: dict, shift_ms: float | None) -> dict:
+    """One map's worst note after the lead: rankable, playable or a miss."""
+    if not m.get("notes"):
+        return {"note_ms": None, "note_verdict": None}
+    e = None if shift_ms is None else note_errors(map_lines_of(m), _engine_lines(m), m["notes"])
+    if e is None:
+        return {"note_ms": None, "note_verdict": "miss"}
+    worst = float(np.max(np.abs(e - shift_ms)))
+    return {"note_ms": worst, "note_verdict": "rankable" if worst <= RANKABLE_MS
+            else "playable" if worst <= PLAYABLE_MS else "miss"}
 
 
 def own_offset(errors: np.ndarray) -> float:
@@ -189,8 +275,12 @@ def ranked_pairs(maps: list[dict]) -> np.ndarray:
                 worst = float(np.max(np.abs(errors)))
                 if worst <= 0.5:
                     continue
-                rows.append((worst, float(np.max(np.abs(errors - own_offset(errors))))))
-    return np.asarray(rows, dtype=float).reshape(-1, 2)
+                ea = note_errors(map_lines_of(a), map_lines_of(b), a.get("notes"))
+                eb = note_errors(map_lines_of(b), map_lines_of(a), b.get("notes"))
+                note = (max(float(np.max(np.abs(ea))), float(np.max(np.abs(eb))))
+                        if ea is not None and eb is not None else math.nan)
+                rows.append((worst, float(np.max(np.abs(errors - own_offset(errors)))), note))
+    return np.asarray(rows, dtype=float).reshape(-1, 3)
 
 
 def summarise(maps: list[dict]) -> dict:
@@ -212,7 +302,14 @@ def summarise(maps: list[dict]) -> dict:
             "songs_exact": sum(any(m["rank"]["verdict"] == "exact" for m in ms) for ms in songs),
             "songs_rankable": sum(any(m["rank"]["verdict"] != "miss" for m in ms) for ms in songs),
             "songs_rankable_all": sum(all(m["rank"]["verdict"] != "miss" for m in ms) for ms in songs),
-            "songs_locked": sum(any(map(locked, ms)) for ms in songs)}
+            "songs_locked": sum(any(map(locked, ms)) for ms in songs),
+            # worst note; 0 songs noted where the report has no notes
+            "songs_noted": sum(any(m["rank"].get("note_verdict") is not None for m in ms)
+                               for ms in songs),
+            "songs_note_rankable": sum(any(m["rank"].get("note_verdict") == "rankable" for m in ms)
+                                       for ms in songs),
+            "songs_note_playable": sum(any(m["rank"].get("note_verdict") in ("rankable", "playable")
+                                           for m in ms) for ms in songs)}
 
 
 def pct(part: int, whole: int) -> str:
@@ -228,6 +325,11 @@ def print_summary(name: str, s: dict) -> None:
           f" grid locked {pct(s['songs_locked'], songs)} %")
     print(f"  {'':<9} maps  : rankable {pct(s['rankable'], n)} %, exact {pct(s['exact'], n)} %,"
           f" grid locked {pct(s['locked'], n)} %")
+    if s.get("songs_noted"):
+        noted = s["songs_noted"]
+        print(f"  {'':<9} notes : rankable {pct(s['songs_note_rankable'], noted)} %"
+              f" (worst note <= {RANKABLE_MS:g} ms), playable {pct(s['songs_note_playable'], noted)} %"
+              f" (<= {PLAYABLE_MS:g} ms), of {noted} songs with notes")
     print(f"  {'':<9} why a miss ({s['miss']} maps): " + ", ".join(
         f"{c} {pct(s['causes'][c], s['miss']).strip()} %" for c in CAUSES))
 
@@ -240,6 +342,11 @@ def print_pairs(pairs: np.ndarray) -> None:
           f" rankable {pct(int(np.sum(pairs[:, 0] <= RANKABLE_MS)), len(pairs))} %,"
           f" exact {pct(int(np.sum(pairs[:, 0] <= EXACT_MS)), len(pairs))} %,"
           f" grid locked {pct(int(np.sum(pairs[:, 1] <= RANKABLE_MS)), len(pairs))} %")
+    noted = pairs[~np.isnan(pairs[:, 2]), 2]
+    if noted.size:
+        print(f"  {'':<9} on notes ({noted.size} pairs): rankable"
+              f" {pct(int(np.sum(noted <= RANKABLE_MS)), noted.size)} %,"
+              f" playable {pct(int(np.sum(noted <= PLAYABLE_MS)), noted.size)} %")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -264,15 +371,16 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("a map is in two of the reports")
     dev = [m for m in maps if m.get("split") == "dev"]
     shift = beat_shift(dev)
+    lead = note_shift(dev)
     for m in maps:
-        m["rank"] = verdict(m, shift)
+        m["rank"] = verdict(m, shift) | note_verdict(m, lead)
     stage = report.get("stage") or {}
     print(f"{stage.get('id', '?')}, engine {report.get('engine')} {report.get('fingerprint')},"
           f" run {report.get('run')}; lead fitted on dev: {shift:+.1f} ms;"
           f" rankable <= {RANKABLE_MS:g} ms, exact <= {EXACT_MS:g} ms (worst beat)")
     pairs = ranked_pairs(maps)
     print_pairs(pairs)
-    summary = {"lead_ms": shift, "ranked_pairs": len(pairs)}
+    summary = {"lead_ms": shift, "note_lead_ms": lead, "ranked_pairs": len(pairs)}
     for name in ("dev", "holdout", "confirmation"):
         part = [m for m in maps if m.get("split") == name]
         if part:
