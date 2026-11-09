@@ -20,6 +20,38 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-08 · Half-beat phase check on by default
+
+### Changed
+
+- `PHASE_CHECK` is on: a run of red lines whose attacks sit on its half beats rather
+  than its beats moves by half a beat (#155 built it, off).
+- The real-audio pin for *La Camisa Negra* reads 97 BPM instead of 194 since the tempo
+  judge went on (#158): 97 is the song's tempo. The pin is local to the server
+  (`bench/real_audio_snapshot.local.json`); only that song's two figures changed.
+
+### Measured
+
+- Replayed (`bench/replay.py --set PHASE_CHECK=True`) on the server's ranked stage runs
+  of afbf3a5, rankable songs (worst beat <= 10 ms):
+  anime-single dev +0.6 points, bands dev 40.2 -> 41.0 %, anime-variable dev
+  22.5 -> 23.2 % (7 maps fixed); every held-out split unchanged; 0 maps broken anywhere.
+- The same day's stage runs on afbf3a5 (all of today's changes), rankable songs held out:
+  anime-single 71.5 %, bands 41.5 %, anime-variable 28.0 %. Replaying them with
+  `MERGE_STEADY_LINES=False` breaks 11 bands and 4 anime-variable dev maps and fixes
+  none, so the merge stays on.
+- The Rust core refuses (`no_coherent_pulse`) 48 of 163 bands audios and 113 of 407
+  anime-variable audios; those take the v3 tracker's answer (roadmap 29.2, 29.3).
+
+### Rejected / tried and dropped
+
+- Reading every line at the song's main octave (a line at about twice or half the BPM
+  holding most of the song moved to it). The stage reports blame "octave" for 26-41 % of
+  missed maps, most of them with some beats right and others at double; replayed on all
+  three stages it changed nothing. Those maps change BPM themselves (RADWIMPS'
+  *Grand Escape* has a 72 BPM stretch inside its 146) while the engine writes one line:
+  the cause is missed sections, which the segmented grid (29.3) addresses, not octave.
+
 ## Unreleased — 2026-11-08 · The measurement server keeps its disk
 
 ### Hardening
