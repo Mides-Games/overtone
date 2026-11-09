@@ -107,37 +107,162 @@ def _song_octave_by_beat_this(analysis: Analysis, heard) -> Analysis:
     return replace(analysis, points=out)
 
 
+def _beat_grid_cost(lines: list[tuple[float, float]], beats_ms: np.ndarray, start: float, stop: float):
+    """Median distance (ms) from each beat in [start, stop) to the grid of
+    the line it falls in; None with fewer than 16 beats."""
+    b = beats_ms[(beats_ms >= start) & (beats_ms < stop)]
+    if b.size < 16:
+        return None
+    starts = np.asarray([o for o, _b in lines])
+    idx = np.clip(np.searchsorted(starts, b, side="right") - 1, 0, len(lines) - 1)
+    o = starts[idx]
+    step = 60000.0 / np.asarray([bp for _o, bp in lines])[idx]
+    return float(np.median(np.abs(b - o - np.round((b - o) / step) * step)))
+
+
+def _heard_bpm(b: np.ndarray, offset: float, bpm: float):
+    """The tempo of beats counted on a line's grid (a least-squares slope), or
+    None under 16 beats or when they do not sit on a steady grid (spread over
+    COLLAPSE_LINES_STEADY of a beat). Beat This!'s 20 ms frames average out
+    over a line."""
+    if b.size < 16:
+        return None
+    step = 60000.0 / bpm
+    k = np.round((b - offset) / step)
+    if np.ptp(k) < 8:
+        return None
+    fit = np.polyfit(k, b, 1)
+    if float(np.std(b - np.polyval(fit, k))) > params.COLLAPSE_LINES_STEADY * step or fit[0] <= 0:
+        return None
+    return 60000.0 / float(fit[0])
+
+
+def _collapse_by_beat_this(lines: list[tuple[float, float]], beats_ms: np.ndarray, end_ms: float,
+                           meters: list[int] | None = None):
+    """The lines with those at one tempo on one grid (COLLAPSE_LINES_BEAT_THIS),
+    as (offset, bpm, index of the line each came from), or None.
+
+    The engine sometimes writes a single-tempo song as several lines at
+    nearly one BPM, each a few ms out of phase with the last; the map has
+    one. When lines within COLLAPSE_LINES_AGREE_PCT of the longest line's BPM
+    cover COLLAPSE_LINES_SHARE of the song, they all take that line's grid
+    (a run of them becomes one line, on the grid's beat nearest where it
+    starts) if Beat This!'s beats inside them sit on it within
+    COLLAPSE_LINES_SLACK times their distance to their own grids. Lines at
+    another tempo stay as they are, and a line where the meter changes stays
+    a line, on the one grid: a signature change at one tempo is a red line."""
+    spans = [max(0.0, (lines[n + 1][0] if n + 1 < len(lines) else end_ms) - o) for n, (o, _b) in enumerate(lines)]
+    total = sum(spans)
+    if total <= 0.0:
+        return None
+    o, bpm = lines[int(np.argmax(spans))]
+    agree = [abs(b / bpm - 1.0) * 100.0 <= params.COLLAPSE_LINES_AGREE_PCT for _o, b in lines]
+    if sum(agree) < 2 or sum(s for s, a in zip(spans, agree) if a) < params.COLLAPSE_LINES_SHARE * total:
+        return None
+    step = 60000.0 / bpm
+    first = o - np.floor(o / step) * step
+    meters = list(meters) if meters is not None else [4] * len(lines)
+    out: list[tuple[float, float, int]] = []
+    for n, (lo, lb) in enumerate(lines):
+        if not agree[n]:
+            out.append((lo, lb, n))
+        elif n == 0:
+            out.append((first, bpm, n))
+        elif not agree[n - 1] or meters[n] != meters[n - 1]:
+            out.append((first + np.round((lo - first) / step) * step, bpm, n))
+    if len(out) == len(lines):
+        return None
+    # the beats inside the lines that agree, on their own grids and on the one
+    inside = np.zeros(beats_ms.size, dtype=bool)
+    for n, (lo, _lb) in enumerate(lines):
+        if agree[n]:
+            stop = lines[n + 1][0] if n + 1 < len(lines) else end_ms
+            inside |= (beats_ms >= (lo if n else -np.inf)) & (beats_ms < stop)
+    many = _beat_grid_cost(lines, beats_ms[inside], -np.inf, end_ms)
+    single = _beat_grid_cost([(first, bpm)], beats_ms[inside], -np.inf, end_ms)
+    if many is None or single is None or single > params.COLLAPSE_LINES_SLACK * many:
+        return None
+    # The song's median would hide a stretch the one grid misses. A long line
+    # keeps a real phase reset (Noble: 131 s left 125 ms off), and any line
+    # whose beats keep its own tempo keeps a real small change (200 -> 203.5
+    # BPM); a line merely out of phase has beats at the one grid's tempo.
+    for n, (lo, lb) in enumerate(lines):
+        stop = lines[n + 1][0] if n + 1 < len(lines) else end_ms
+        if not agree[n]:
+            continue
+        heard = _heard_bpm(beats_ms[(beats_ms >= lo) & (beats_ms < stop)], lo, lb)
+        if heard is not None and abs(heard / bpm - 1.0) * 100.0 > params.COLLAPSE_LINES_TEMPO_PCT \
+                and abs(heard / lb - 1.0) < abs(heard / bpm - 1.0):
+            return None
+        if (stop - lo) / 1000.0 < params.COLLAPSE_LINES_LONG_S:
+            continue
+        own = _beat_grid_cost([(lo, lb)], beats_ms, lo, stop)
+        new = _beat_grid_cost([(first, bpm)], beats_ms, lo, stop)
+        if own is not None and new is not None \
+                and new > max(params.COLLAPSE_LINES_SLACK * own, own + params.COLLAPSE_LINES_FLOOR_MS):
+            return None
+    return [(float(x), float(y), k) for x, y, k in out]
+
+
+def _half_beat_by_beat_this(lines: list[tuple[float, float]], beats_ms: np.ndarray, end_ms: float,
+                            meters: list[int] | None = None):
+    """The lines, each moved half a beat where Beat This!'s beats inside it
+    sit on its half beats (their median distance under PHASE_BEAT_THIS_GAIN
+    of the distance to its beats), and whether any moved. A line in a meter
+    other than 4 also needs PHASE_BEAT_THIS_SHARE of the beats nearer the
+    half beat: in a signature region's six-beat bars the network hears a
+    pulse twice the line's tempo and switches between its halves, and about
+    60 % of its beats on one half says nothing about where the beat is."""
+    meters = list(meters) if meters is not None else [4] * len(lines)
+    out, moved = [], False
+    for n, (offset, bpm) in enumerate(lines):
+        stop = lines[n + 1][0] if n + 1 < len(lines) else end_ms
+        inside = beats_ms[(beats_ms >= offset) & (beats_ms < stop)]
+        step = 60000.0 / bpm
+        if inside.size >= params.PHASE_BEAT_THIS_MIN_BEATS:
+            on = np.mod((inside - offset) / step, 1.0)
+            on = np.minimum(on, 1.0 - on)
+            half = 0.5 - on
+            if float(np.median(half)) < params.PHASE_BEAT_THIS_GAIN * float(np.median(on)) \
+                    and (meters[n] == 4 or float(np.mean(half < on)) >= params.PHASE_BEAT_THIS_SHARE):
+                offset += 0.5 * step
+                moved = True
+        out.append((offset, bpm))
+    return out, moved
+
+
 def _phase_by_beat_this(analysis: Analysis, heard) -> Analysis:
     """Each red line moved half a beat where Beat This!'s beats sit on its
     half beats (PHASE_BEAT_THIS). Fast punk and metal put the loud snare
     between the map's beats, and the attack-weighted phase check
-    (PHASE_CHECK) follows the snare; the network was trained on beats."""
+    (PHASE_CHECK) follows the snare; the network was trained on beats.
+    Then several lines at one tempo collapse into one where the beats agree
+    (COLLAPSE_LINES_BEAT_THIS)."""
     points = list(getattr(analysis, "points", None) or [])
-    if not params.PHASE_BEAT_THIS or not points or any(getattr(p, "manual", False) for p in points):
+    if not (params.PHASE_BEAT_THIS or params.COLLAPSE_LINES_BEAT_THIS) or not points \
+            or any(getattr(p, "manual", False) for p in points):
         return analysis
     found = heard()
     if found is None or len(found) < params.PHASE_BEAT_THIS_MIN_BEATS:
         return analysis
     beats = np.sort(np.asarray(found, dtype=float)) * 1000.0
     end_ms = float(analysis.duration) * 1000.0
-    lines, moved = [], False
-    for n, p in enumerate(points):
-        offset, bpm = float(p.offset_ms), float(p.bpm)
-        stop = float(points[n + 1].offset_ms) if n + 1 < len(points) else end_ms
-        inside = beats[(beats >= offset) & (beats < stop)]
-        step = 60000.0 / bpm
-        if inside.size >= params.PHASE_BEAT_THIS_MIN_BEATS:
-            def cost(start: float) -> float:
-                ph = np.mod((inside - start) / step, 1.0)
-                return float(np.median(np.minimum(ph, 1.0 - ph)))
-            if cost(offset + 0.5 * step) < params.PHASE_BEAT_THIS_GAIN * cost(offset):
-                offset += 0.5 * step
-                moved = True
-        lines.append((offset, bpm))
+    lines = [(float(p.offset_ms), float(p.bpm)) for p in points]
+    sources = list(range(len(points)))
+    moved = False
+    if params.PHASE_BEAT_THIS:
+        lines, moved = _half_beat_by_beat_this(lines, beats, end_ms, [p.meter for p in points])
+    if params.COLLAPSE_LINES_BEAT_THIS and len(lines) > 1:
+        collapsed = _collapse_by_beat_this(lines, beats, end_ms, [p.meter for p in points])
+        if collapsed is not None:
+            lines, sources = [(o, b) for o, b, _k in collapsed], [k for _o, _b, k in collapsed]
+            moved = True
     if not moved:
         return analysis
-    return phrases._with_lines(analysis, lines,
-                               beats=red_lines._beats_of(lines, float(analysis.duration)))
+    out = phrases._with_lines(analysis, lines,
+                              beats=red_lines._beats_of(lines, float(analysis.duration)))
+    # each line keeps its own meter and kiai, even snapped a hair before it
+    return replace(out, points=[replace(points[k], offset_ms=o, bpm=b) for (o, b), k in zip(lines, sources)])
 
 
 def _load_beat_this():

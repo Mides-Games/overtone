@@ -828,6 +828,22 @@
    "where": "python-only",
    "why": "the osu! conventions run after either engine and Beat This! is an ONNX model held in Python; the Rust engine carries no model"
   },
+  "COLLAPSE_LINES_BEAT_THIS": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine and Beat This! is an ONNX model held in Python; the Rust engine carries no model"
+  },
+  "COLLAPSE_LINES_LONG_S": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine and Beat This! is an ONNX model held in Python; the Rust engine carries no model"
+  },
+  "COLLAPSE_LINES_TEMPO_PCT": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine and Beat This! is an ONNX model held in Python; the Rust engine carries no model"
+  },
+  "PHASE_BEAT_THIS_SHARE": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine and Beat This! is an ONNX model held in Python; the Rust engine carries no model"
+  },
   "BEAT_THIS_TRACKER": {
    "where": "python-only",
    "why": "the fallback tracker (v2's beat tracker) runs in Python only; the Rust engine is the precision path"

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import os
 import json
 import sys
 from concurrent.futures import ProcessPoolExecutor
@@ -22,17 +23,36 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path[:0] = [str(ROOT / "python"), str(ROOT / "bench")]
+sys.path[:0] = [str(ROOT / "python"), str(ROOT / "bench"), str(ROOT / "proto")]
+
+
+SUBFRAME = False
 
 
 def _beats_of(path: str):
     import overtone as ta
     try:
         y, sr = ta._load_audio(path, lambda _m: None)
-        beats = ta._beat_this_judge_beats(y, sr)
+        if SUBFRAME or os.environ.get("BEAT_LINES_SUBFRAME"):
+            beats = _subframe_beats(y, sr)
+        else:
+            beats = ta._beat_this_judge_beats(y, sr)
     except Exception as exc:  # noqa: BLE001 - a measurement: name it and go on
         return path, None, f"{type(exc).__name__}: {exc}"
     return path, None if beats is None else [round(float(b), 5) for b in beats], None
+
+
+def _subframe_beats(y, sr):
+    """Beat This!'s beats with each peak placed between frames (proto/beat_subframe.py)."""
+    import soxr
+    from beat_subframe import peaks
+    from overtone import beat_this, params
+    session = beat_this._load_beat_this()
+    if session is None:
+        return None
+    sig = soxr.resample(np.asarray(y, dtype=np.float64), sr, params.BEAT_THIS_SR)
+    logits = beat_this._beat_this_logits(session, beat_this._beat_this_spectrogram(sig)).astype(float)
+    return peaks(logits, True) * params.BEAT_THIS_HOP / params.BEAT_THIS_SR
 
 
 def _audios(reports: list[dict]) -> dict[str, str]:
@@ -43,7 +63,7 @@ def _audios(reports: list[dict]) -> dict[str, str]:
     return out
 
 
-def fit_lines(beats_s, tol_ms: float, min_beats: int, merge_pct: float) -> list[tuple[float, float]]:
+def fit_lines(beats_s, tol_ms: float, min_beats: int, merge_pct: float, spans: bool = False):
     """The fewest lines (offset ms, BPM) keeping every beat within tol_ms.
 
     Beats are indexed along the grid (a missed beat leaves a gap, not a
@@ -90,7 +110,75 @@ def fit_lines(beats_s, tol_ms: float, min_beats: int, merge_pct: float) -> list[
                     prev[3] = line[3]
                     continue
         merged.append(line)
+    if spans:
+        return [(float(o), float(bpm), float(a), float(e)) for o, bpm, a, e in merged]
     return [(float(o), float(bpm)) for o, bpm, _s, _e in merged]
+
+
+def _fold_ratio(a: float, b: float) -> float:
+    """a/b folded by octaves into [1/sqrt2, sqrt2)."""
+    r = a / b
+    while r >= 2 ** 0.5:
+        r /= 2.0
+    while r < 2 ** -0.5:
+        r *= 2.0
+    return r
+
+
+def insert_sections(lines, segs, duration_s: float, min_s: float, pct: float, octave_too: bool):
+    """The engine's lines with Beat This!'s long sections of another tempo
+    spliced in; after each, the engine's grid resumes on its nearest beat."""
+    end_ms = duration_s * 1000.0
+    lines = sorted((float(o), float(b)) for o, b in lines)
+
+    def engine_at(t):
+        cur = lines[0]
+        for o, b in lines:
+            if o <= t:
+                cur = (o, b)
+        return cur
+
+    picked = []
+    for o, bpm, a, e in segs:
+        if (e - a) / 1000.0 < min_s:
+            continue
+        eo, eb = engine_at(0.5 * (a + e))
+        r = bpm / eb
+        folded = _fold_ratio(bpm, eb)
+        if abs(r - 1.0) * 100.0 < pct:
+            continue
+        if not octave_too and abs(folded - 1.0) * 100.0 < pct:
+            continue
+        picked.append((o, bpm, a, e))
+    if not picked:
+        return None
+    events = []  # (start ms, offset ms, bpm)
+    def snap(o, b, t):
+        step = 60000.0 / b
+        return o + np.ceil((t - o) / step - 0.25) * step
+    cursor = 0.0
+    for o, bpm, a, e in picked:
+        # engine pieces from cursor to a
+        for n, (lo, lb) in enumerate(lines):
+            nxt = lines[n + 1][0] if n + 1 < len(lines) else end_ms
+            s0, s1 = max(cursor, lo if n else -1e12), min(a, nxt)
+            if s1 > s0 + 1.0:
+                events.append((snap(lo, lb, max(s0, 0.0)), lb))
+        events.append((snap(o, bpm, a), bpm))
+        cursor = e
+    for n, (lo, lb) in enumerate(lines):
+        nxt = lines[n + 1][0] if n + 1 < len(lines) else end_ms
+        s0 = max(cursor, lo if n else -1e12)
+        if nxt > s0 + 1.0:
+            events.append((snap(lo, lb, max(s0, 0.0)), lb))
+    events.sort()
+    out = []
+    for o, b in events:
+        if out and abs(o - out[-1][0]) < 1.0:
+            out[-1] = (o, b)
+        else:
+            out.append((o, b))
+    return out
 
 
 def phase_by_beats(lines, beats_s, duration_s: float, shifts=(0.5,)):
@@ -210,6 +298,52 @@ def resets_by_beats(lines, beats_s, duration_s: float, min_beats: int = 16, min_
     return out
 
 
+def one_line(beats_s, hint_bpm: float, tol_ms: float = 25.0):
+    """One line (offset ms, BPM) through Beat This!'s beats over the whole
+    song, at the octave of hint_bpm: beats indexed on the grid, fitted by
+    least squares, the ones farther than tol_ms dropped and the fit redone."""
+    t = np.sort(np.asarray(beats_s, dtype=float)) * 1000.0
+    if t.size < 16:
+        return None
+    period = float(np.median(np.diff(t)))
+    want = 60000.0 / hint_bpm
+    while period > want * 1.42:
+        period /= 2.0
+    while period < want / 1.42:
+        period *= 2.0
+    keep = np.ones(t.size, dtype=bool)
+    t0 = float(np.median(t - np.round((t - t[0]) / period) * period))
+    for _ in range(4):
+        k = np.round((t - t0) / period)
+        r = t - (t0 + k * period)
+        keep = np.abs(r) <= max(tol_ms, 0.15 * period) if _ < 2 else np.abs(r) <= tol_ms
+        if keep.sum() < 16:
+            return None
+        period, t0 = np.polyfit(k[keep], t[keep], 1)
+    return float(t0 + np.ceil((t[0] - t0) / period) * period), 60000.0 / float(period)
+
+
+def _fragmented(m: dict, at_least: int, short_s: float) -> bool:
+    lines = [(float(o), float(b)) for o, b, *_ in m.get("lines") or []]
+    if len(lines) < at_least:
+        return False
+    end = (m.get("duration_s") or 0.0) * 1000.0
+    spans = [(lines[n + 1][0] if n + 1 < len(lines) else end) - o for n, (o, _b) in enumerate(lines)]
+    return float(np.median(spans)) / 1000.0 < short_s
+
+
+def _hint(m: dict) -> float:
+    """The engine's BPM weighted by how long each line lasts."""
+    lines = [(float(o), float(b)) for o, b, *_ in m.get("lines") or []]
+    end = (m.get("duration_s") or 0.0) * 1000.0
+    spans = np.asarray([max(1.0, (lines[n + 1][0] if n + 1 < len(lines) else end) - o)
+                        for n, (o, _b) in enumerate(lines)])
+    bpms = np.asarray([b for _o, b in lines])
+    order = np.argsort(bpms)
+    c = np.cumsum(spans[order])
+    return float(bpms[order][np.searchsorted(c, 0.5 * c[-1])])
+
+
 def tidy(lines, duration_s: float):
     """Whole or tidy BPMs as the engine writes them (phrases._tidy_bpm)."""
     import overtone as ta
@@ -241,6 +375,17 @@ def main(argv=None) -> int:
     ap.add_argument("--resets", action="store_true",
                     help="keep the run's lines, split where Beat This!'s beats leave the grid")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--insert", action="store_true",
+                    help="score: Beat This!'s long sections of another tempo spliced into the engine's lines")
+    ap.add_argument("--insert-s", type=float, default=15.0)
+    ap.add_argument("--insert-pct", type=float, default=4.0)
+    ap.add_argument("--insert-octave", action="store_true", help="--insert: octave sections count too")
+    ap.add_argument("--insert-single", action="store_true", help="--insert: only where the engine wrote one line")
+    ap.add_argument("--fragmented", type=int, default=0,
+                    help="score: where the engine wrote at least this many short lines, one line through the beats")
+    ap.add_argument("--frag-short", type=float, default=10.0, help="median line length (s) counted as short")
+    ap.add_argument("--frag-fit", action="store_true", help="--fragmented: the fitted lines instead of one")
+    ap.add_argument("--subframe", action="store_true", help="beats mode: peaks placed between frames")
     ap.add_argument("--changes", action="store_true",
                     help="fitted lines only where the run wrote one line and the fit holds distinct tempos")
     ap.add_argument("--change-pct", type=float, default=1.5)
@@ -254,6 +399,10 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     reports = [json.loads(Path(p).read_text(encoding="utf-8")) for p in args.reports]
     audios = _audios(reports)
+    global SUBFRAME
+    SUBFRAME = args.subframe
+    if SUBFRAME:
+        os.environ["BEAT_LINES_SUBFRAME"] = "1"
     if args.mode == "beats":
         done = {}
         if args.out and Path(args.out).exists():
@@ -277,6 +426,7 @@ def main(argv=None) -> int:
     beats = json.load(gzip.open(args.beats, "rt", encoding="utf-8"))
     maps = [m for r in reports for m in r["maps"]]
     fitted = {}
+    segs = {}
     have = {m["audio_sha1"] for m in maps}
     for a, b in beats.items():
         if not b or a not in have:
@@ -285,6 +435,8 @@ def main(argv=None) -> int:
         if not dur:
             continue
         lines = fit_lines(b, args.tol, args.min_beats, args.merge_pct)
+        if args.insert:
+            segs[a] = fit_lines(b, args.tol, args.min_beats, args.merge_pct, spans=True)
         fitted[a] = lines if args.no_tidy or not lines else tidy(lines, dur)
     dev = [m for m in maps if m.get("split") == "dev"]
     shift = rankable.beat_shift(dev)
@@ -304,6 +456,24 @@ def main(argv=None) -> int:
             bp = [b for _o, b in f]
             distinct = len(f) >= 2 and (max(bp) / min(bp) - 1.0) * 100.0 >= args.change_pct
             use = f if distinct and len(m.get("lines") or []) == 1 else None
+        elif args.insert:
+            seg = segs.get(m["audio_sha1"])
+            eng = [(float(o), float(bp)) for o, bp, *_ in m.get("lines") or []]
+            use = None
+            if seg and eng and (not args.insert_single or len(eng) == 1):
+                use = insert_sections(eng, seg, m["duration_s"] or 0.0, args.insert_s, args.insert_pct,
+                                      args.insert_octave)
+                if use and not args.no_tidy:
+                    use = tidy(use, m["duration_s"])
+        elif args.fragmented:
+            b = beats.get(m["audio_sha1"])
+            use = None
+            if b and _fragmented(m, args.fragmented, args.frag_short):
+                if args.frag_fit:
+                    use = fitted.get(m["audio_sha1"]) or None
+                else:
+                    one = one_line(b, _hint(m), args.tol)
+                    use = tidy([one], m["duration_s"]) if one else None
         elif args.multi and len(m.get("lines") or []) == 1:
             use = None
         if use and (not args.only_refused or m.get("backend") != "rust"):
