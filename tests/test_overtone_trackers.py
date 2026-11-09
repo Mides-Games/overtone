@@ -927,6 +927,44 @@ class OctaveCapTests(unittest.TestCase):
             self.assertIs(overtone._cap_octaves(b), b)
 
 
+class PhaseBeatThisTests(unittest.TestCase):
+    """PHASE_BEAT_THIS: a line half a beat off Beat This!'s beats moves onto them."""
+
+    BEAT = 60000.0 / 190
+
+    def _analysis(self, points, duration=30.0):
+        import overtone
+        return overtone.Analysis(source="x", duration=duration, beats=np.zeros(0), local_bpms=np.zeros(0),
+                                 points=points, hop_length=512, sample_rate=44100, subdivision=1.0,
+                                 attack_times=np.zeros(0), attack_weights=np.zeros(0), engine="legacy")
+
+    def heard(self, start_ms, duration=30.0):
+        return lambda: np.arange(start_ms, duration * 1000.0, self.BEAT) / 1000.0
+
+    def test_a_line_on_the_offbeat_moves_half_a_beat(self):
+        import overtone
+        a = self._analysis([TimingPoint(self.BEAT / 2, 190.0, 1.0, 0)])
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", True):
+            out = overtone._phase_by_beat_this(a, self.heard(self.BEAT))
+        self.assertAlmostEqual(out.points[0].offset_ms, self.BEAT, delta=0.01)
+        self.assertEqual(out.points[0].bpm, 190.0)
+        self.assertGreater(out.beats.size, 0)
+
+    def test_a_line_on_the_beats_is_left_alone(self):
+        import overtone
+        a = self._analysis([TimingPoint(self.BEAT, 190.0, 1.0, 0)])
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", True):
+            out = overtone._phase_by_beat_this(a, self.heard(self.BEAT + 4.0))
+        self.assertIs(out, a)
+
+    def test_off_or_without_the_network_nothing_moves(self):
+        import overtone
+        a = self._analysis([TimingPoint(self.BEAT / 2, 190.0, 1.0, 0)])
+        self.assertIs(overtone._phase_by_beat_this(a, self.heard(self.BEAT)), a)
+        with mock.patch.object(overtone, "PHASE_BEAT_THIS", True):
+            self.assertIs(overtone._phase_by_beat_this(a, lambda: None), a)
+
+
 class PhaseCheckTests(unittest.TestCase):
     """PHASE_CHECK: a red line locked half a beat off moves onto the beat."""
 

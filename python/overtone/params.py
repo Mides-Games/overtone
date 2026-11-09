@@ -593,6 +593,15 @@ _BEAT_THIS_HEARD: list = []
 #: own, every red line moves to its octave. Off until measured on the server.
 SONG_OCTAVE_BEAT_THIS = False
 
+#: A red line moved half a beat when Beat This!'s beats sit on its half beats
+#: (PHASE_BEAT_THIS): the median beat's distance to the shifted grid under
+#: PHASE_BEAT_THIS_GAIN times its distance to the line's own. Bands-variable
+#: (afbf3a5): 16 of 36 missed single-BPM songs had the exact BPM half a beat
+#: off (fast punk and metal; the snare between the map's beats). Off: measuring.
+PHASE_BEAT_THIS = False
+PHASE_BEAT_THIS_GAIN = 0.5
+PHASE_BEAT_THIS_MIN_BEATS = 8
+
 
 #: Beat This! as an extra voter (Phase 10, 10.3; owner decision 2026-10-24).
 #: The network (assets/models/beat_this_final0.onnx, MIT, see beat_this.json)
