@@ -670,6 +670,37 @@ ONE_LINE_PHASE = True
 ONE_LINE_PHASE_TOL = 0.1
 ONE_LINE_PHASE_MIN = 32
 
+#: A line at another tempo whose Beat This! beats sit on the main line's grid
+#: (median within FOREIGN_LINES_ON of a main beat, and at most
+#: FOREIGN_LINES_RATIO of their median distance to the line's own grid, over at
+#: least FOREIGN_LINES_MIN_BEATS beats) goes back onto the main grid; the main
+#: line governs the longest span, and a line within FOREIGN_LINES_PCT of its
+#: tempo is the collapse's. Replayed on the 2026-11-09 master runs over the
+#: one-line phase, lead refitted: anime-single dev 81.9 -> 82.5 % of songs,
+#: held out 76.5 -> 77.0 %; bands unchanged.
+FOREIGN_LINES_BEAT_THIS = True
+FOREIGN_LINES_PCT = 5.0
+FOREIGN_LINES_MIN_BEATS = 8
+FOREIGN_LINES_ON = 0.1
+FOREIGN_LINES_RATIO = 0.5
+
+#: The precision engine's lines move later by ATTACK_RISE_SLOPE ms for each ms
+#: the song's strong on-beat attacks take to peak on the onset envelope (within
+#: ATTACK_RISE_REACH_S) beyond ATTACK_RISE_MEAN_MS, at most ATTACK_RISE_MAX_MS,
+#: and never earlier. Fitted on anime-single's dev songs (438 with one map line
+#: and the engine's grid right): the map's distance to the engine's beat falls
+#: 0.554 ms per ms of rise, r = -0.34 (bands, not fitted on: -0.31). Replayed
+#: over the one-line phase and the foreign lines, lead refitted: bands dev
+#: 47.5 -> 49.2 % of songs, held out 51.2 -> 51.2 %; anime-single dev 82.5 ->
+#: 83.3 %, held out 77.0 -> 79.5 %. Moving fast attacks earlier as well gained
+#: anime held out 0.5 more but would move a click off its start, where the
+#: accuracy baseline holds it.
+ATTACK_RISE_LEAD = True
+ATTACK_RISE_SLOPE = 0.554
+ATTACK_RISE_MEAN_MS = 11.3
+ATTACK_RISE_MAX_MS = 10.0
+ATTACK_RISE_REACH_S = 0.06
+
 
 #: Beat This! as an extra voter (Phase 10, 10.3; owner decision 2026-10-24).
 #: The network (assets/models/beat_this_final0.onnx, MIT, see beat_this.json)

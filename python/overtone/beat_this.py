@@ -265,6 +265,54 @@ def _phase_by_beat_this(analysis: Analysis, heard) -> Analysis:
     return replace(out, points=[replace(points[k], offset_ms=o, bpm=b) for (o, b), k in zip(lines, sources)])
 
 
+def _foreign_lines_by_beat_this(analysis: Analysis, heard) -> Analysis:
+    """A line at another tempo whose Beat This! beats sit on the song's main
+    grid, and far off its own, goes back onto the main grid
+    (FOREIGN_LINES_BEAT_THIS). The main line governs the longest span. A
+    section read at 2/3 or 4/3 of the song's beat (Mili's Paper Bouquet: 212
+    then 130.73 from 16 s) is still the song's beat to the network: its beats
+    there sit within FOREIGN_LINES_ON of a main beat and within
+    FOREIGN_LINES_RATIO of their distance to the line's own grid."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not params.FOREIGN_LINES_BEAT_THIS or len(points) < 2 \
+            or any(getattr(p, "manual", False) for p in points):
+        return analysis
+    found = heard()
+    if found is None or len(found) < params.PHASE_BEAT_THIS_MIN_BEATS:
+        return analysis
+    beats = np.sort(np.asarray(found, dtype=float)) * 1000.0
+    end_ms = float(analysis.duration) * 1000.0
+    spans = [(0.0 if n == 0 else p.offset_ms, points[n + 1].offset_ms if n + 1 < len(points) else end_ms)
+             for n, p in enumerate(points)]
+    main = max(range(len(points)), key=lambda n: spans[n][1] - spans[n][0])
+    m_offset, m_bpm = float(points[main].offset_ms), float(points[main].bpm)
+    m_step = 60000.0 / m_bpm
+
+    def off_grid(x, offset, bpm):
+        step = 60000.0 / bpm
+        k = (x - offset) / step
+        return np.abs(k - np.round(k)) * step
+
+    lines, moved = [], False
+    for n, p in enumerate(points):
+        lo, hi = spans[n]
+        inside = beats[(beats >= lo) & (beats < hi)]
+        if n != main and abs(p.bpm / m_bpm - 1.0) * 100.0 > params.FOREIGN_LINES_PCT \
+                and inside.size >= params.FOREIGN_LINES_MIN_BEATS:
+            own = float(np.median(off_grid(inside, p.offset_ms, p.bpm)))
+            on = float(np.median(off_grid(inside, m_offset, m_bpm)))
+            if on <= params.FOREIGN_LINES_ON * m_step and on <= params.FOREIGN_LINES_RATIO * own:
+                k = np.round((p.offset_ms - m_offset) / m_step)
+                lines.append((m_offset + k * m_step, m_bpm))
+                moved = True
+                continue
+        lines.append((float(p.offset_ms), float(p.bpm)))
+    if not moved:
+        return analysis
+    lines = red_lines._merge_lines(lines)
+    return phrases._with_lines(analysis, lines, beats=red_lines._beats_of(lines, float(analysis.duration)))
+
+
 def _load_beat_this():
     """A new ONNX Runtime session on the model; None without one or the other."""
     path = params.ROOT / "assets" / "models" / params.BEAT_THIS_MODEL

@@ -824,6 +824,18 @@
    "where": "python-only",
    "why": "the osu! conventions run after either engine and Beat This! is an ONNX model held in Python; the Rust engine carries no model"
   },
+  "_attack_rise_ms": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine, in Python; the Rust engine's report stops at the core's lines"
+  },
+  "_lead_by_attack_rise": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine, in Python; the Rust engine's report stops at the core's lines"
+  },
+  "_foreign_lines_by_beat_this": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine and Beat This! is an ONNX model held in Python; the Rust engine carries no model"
+  },
   "_one_line_phase": {
    "where": "python-only",
    "why": "the osu! conventions run after either engine, in Python; the Rust engine's report stops at the core's lines"
