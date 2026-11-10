@@ -318,8 +318,8 @@ BAR_TILE_TOL = 0.02
 #: the likeliest of them, 222.857 BPM. Replayed on the 2026-11-09 master runs
 #: (bench/replay.py): bands dev 45.1 -> 45.9 % of songs (15 maps fixed, 0
 #: broken), held out unchanged; anime-single dev 78.5 -> 79.1 % (29 fixed,
-#: 5 broken: one song, 10 ms of phase), held out 73.5 -> 74.5 % (12, 0);
-#: anime-variable unchanged.
+#: 5 broken: one song, 10 ms of phase), held out 73.5 -> 74.5 % (12, 0).
+#: anime-variable not measured: its runs predate the replay's Beat This! record.
 METER_POINTS_CONFIDENT = True
 
 #: Frames decoded at a time: about 24 s of audio at 44.1 kHz, under a tenth
@@ -662,7 +662,7 @@ COLLAPSE_LINES_STEADY = 0.1
 #: Replayed on the 2026-11-09 master runs with the lead refitted: bands dev
 #: 45.1 -> 47.5 % of songs, held out 48.8 -> 51.2 % (exact maps 38.5 -> 47.7 %);
 #: anime-single dev 78.5 -> 81.9 %, held out 73.5 -> 76.5 %; anime-variable
-#: unchanged. A median, the stronger half of the attacks, or an iterated
+#: not measured (no replayable run). A median, the stronger half of the attacks, or an iterated
 #: trim did no better; refitting the BPM the same way undid whole-BPM snaps
 #: (held out 48.8 -> 36.6 %), and every line of a multi-line song on its own
 #: span changed nothing.

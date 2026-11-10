@@ -105,7 +105,11 @@ The core's own assembly, now fixed too, is not in these numbers.
 | bands-variable | held out | 48.8 → 48.8 % | → 51.2 % | 38.5 → 47.7 % |
 | anime-single | dev | 78.5 → 79.1 % | → 81.9 % | 51.3 → 56.4 % |
 | anime-single | held out | 73.5 → 74.5 % | → 76.5 % | 49.2 → 54.4 % |
-| anime-variable | both | unchanged | unchanged | unchanged |
+| anime-variable | both | not measured | not measured | not measured |
+
+anime-variable is not measured: its newest runs (2026-11-08) predate the record of
+Beat This!'s beats the replay needs, so none of its 407 audios replayed; an earlier
+version of this entry said "unchanged", which only meant nothing ran.
 
 The measure-grid fix alone, at the run's lead: bands dev 15 maps fixed, 0 broken;
 anime-single dev 29 fixed, 5 broken (one song, 10 ms of phase), held out 12 fixed, 0
