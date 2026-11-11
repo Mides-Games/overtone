@@ -114,6 +114,7 @@ EXPERIMENTS = {
     "stems-drums": {"STEMS_DRUMS": True},
     "stems-drums-mix": {"STEMS_DRUMS": True, "CHANGE_POINTS": True, "OCTAVE_RULE": True},
     "change-points": {"CHANGE_POINTS": True},
+    "tempo-runs-off": {"TEMPO_RUNS_BEAT_THIS": False},
     "change-on-beat": {"CHANGE_ON_BEAT": True},
     "change-points-loose": {"CHANGE_POINTS": True, "CHANGE_SIGMA_MS": 4.0, "CHANGE_GAIN": 0.92},
     "all-new": {"CHANGE_POINTS": True, "OCTAVE_RULE": True, "PERCUSSIVE_INPUT": 1.0},

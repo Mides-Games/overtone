@@ -313,6 +313,242 @@ def _foreign_lines_by_beat_this(analysis: Analysis, heard) -> Analysis:
     return phrases._with_lines(analysis, lines, beats=red_lines._beats_of(lines, float(analysis.duration)))
 
 
+def _off_grid(x: np.ndarray, offset: float, bpm: float) -> np.ndarray:
+    """Distance (ms) from each time to the nearest beat of a grid."""
+    step = 60000.0 / bpm
+    k = (x - offset) / step
+    return np.abs(k - np.round(k)) * step
+
+
+def _same_tempo(a: float, b: float, pct: float) -> bool:
+    """Whether two tempi are one, octaves apart included."""
+    return any(abs(a / (b * f) - 1.0) * 100.0 <= pct for f in (1.0, 2.0, 0.5, 4.0, 0.25))
+
+
+def _tempo_runs(sections: list) -> list[dict]:
+    """Consecutive sections at one tempo (within TEMPO_RUNS_TOL) as runs of
+    TEMPO_RUNS_MIN_S or more, each on its longest section's grid: start and
+    end (s), bpm and that section's index. Shorter runs are left out, and the
+    runs either side of one join when they are at one tempo."""
+    runs: list[dict] = []
+    for n, section in enumerate(sections):
+        bpm, length = float(section.bpm), float(section.end_s - section.start_s)
+        if runs and abs(bpm / runs[-1]["bpm"] - 1.0) <= params.TEMPO_RUNS_TOL:
+            run = runs[-1]
+            run["end"] = float(section.end_s)
+            if length > run["length"]:
+                run.update(length=length, bpm=bpm, best=n)
+        else:
+            runs.append({"start": float(section.start_s), "end": float(section.end_s), "bpm": bpm,
+                         "length": length, "best": n})
+    out: list[dict] = []
+    for run in runs:
+        if run["end"] - run["start"] < params.TEMPO_RUNS_MIN_S:
+            continue
+        if out and abs(run["bpm"] / out[-1]["bpm"] - 1.0) <= params.TEMPO_RUNS_TOL:
+            last = out[-1]
+            last["end"] = run["end"]
+            if run["length"] > last["length"]:
+                last.update(length=run["length"], bpm=run["bpm"], best=run["best"])
+        else:
+            out.append(dict(run))
+    return out
+
+
+def _cut_between_grids(times: np.ndarray, weights: np.ndarray, beats: np.ndarray, near: float,
+                       left: tuple[float, float], right: tuple[float, float],
+                       lo_limit: float, hi_limit: float) -> float:
+    """The beat (ms) of the ``right`` grid, within TEMPO_RUNS_REACH_S of
+    ``near``, where leaving the ``left`` grid for it explains the attacks and
+    Beat This!'s beats best; grids are (offset ms, bpm).
+
+    An attack counts by its distance to its grid's quarter beats, times its
+    weight: a run of sixteenths says as much about a grid as its beats do,
+    and counted against the beats alone it fits every grid equally badly. A
+    Beat This! beat counts by its distance to the beats and half beats,
+    TEMPO_RUNS_BEAT_WEIGHT median attacks' worth: the network keeps counting
+    the old tempo through a pause. After a pause (TEMPO_RUNS_PAUSE_BEATS
+    beats with no strong attack) the right grid starts on the first strong
+    attack's beat, as a mapper puts it, when that beat explains the rest
+    within TEMPO_RUNS_PAUSE_SLACK beats' worth of the best one."""
+    r_offset, r_bpm = right
+    step, l_step = 60000.0 / r_bpm, 60000.0 / left[1]
+    reach = params.TEMPO_RUNS_REACH_S * 1000.0
+    lo, hi = max(near - reach, lo_limit), min(near + reach, hi_limit)
+    k0, k1 = int(np.ceil((lo - r_offset) / step)), int(np.floor((hi - r_offset) / step))
+    inside = (times >= lo - step) & (times < hi + step)
+    t, w = times[inside], weights[inside]
+    if k1 <= k0 or t.size < 8:
+        return float(r_offset + np.ceil((near - 0.25 * step - r_offset) / step - 1e-9) * step)
+    b = beats[(beats >= lo - step) & (beats < hi + step)]
+    unit = params.TEMPO_RUNS_BEAT_WEIGHT * float(np.median(w))
+    x = np.concatenate([t, b])
+    on_left = np.concatenate([
+        np.minimum(_off_grid(t, left[0], 4.0 * left[1]) / (l_step / 8.0), 1.0) * w,
+        np.minimum(_off_grid(b, left[0], 2.0 * left[1]) / (l_step / 4.0), 1.0) * unit])
+    on_right = np.concatenate([
+        np.minimum(_off_grid(t, r_offset, 4.0 * r_bpm) / (step / 8.0), 1.0) * w,
+        np.minimum(_off_grid(b, r_offset, 2.0 * r_bpm) / (step / 4.0), 1.0) * unit])
+    order = np.argsort(x, kind="stable")
+    x, on_left, on_right = x[order], on_left[order], on_right[order]
+    before = np.concatenate([[0.0], np.cumsum(on_left)])
+    after = np.concatenate([[0.0], np.cumsum(on_right)])
+    cuts = r_offset + np.arange(k0, k1 + 1) * step
+    # an attack a quarter beat before the cut is already the right grid's
+    costs = np.array([before[i] + (after[-1] - after[i])
+                      for i in np.searchsorted(x, cuts - 0.25 * step)])
+    best = int(np.argmin(costs))
+    strong = t[w >= 1.5 * float(np.median(w))]
+    if strong.size >= 2:
+        ends = strong[1:][np.diff(strong) >= params.TEMPO_RUNS_PAUSE_BEATS * min(step, l_step)]
+        picks = [int(np.argmin(np.abs(cuts - end))) for end in ends]
+        picks = [i for i, end in zip(picks, ends) if abs(cuts[i] - end) <= 0.25 * step
+                 and costs[i] <= costs[best] + params.TEMPO_RUNS_PAUSE_SLACK * unit]
+        if picks:
+            best = min(picks, key=lambda i: costs[i])
+    return float(cuts[best])
+
+
+def _tempo_runs_by_beat_this(analysis: Analysis, heard) -> Analysis:
+    """A stretch at another tempo that the confidence floor dropped, back as
+    a red line when Beat This! follows it (TEMPO_RUNS_BEAT_THIS).
+
+    The precision engine keeps a line per section that reaches the minimum
+    confidence, or the likeliest section's alone. A live band's sections
+    never reach it, so a song at 140 for 38 s and 200 after came out at 140
+    throughout, with both sections in the core's report. A run of sections at
+    one tempo (_tempo_runs), at another tempo than the line over it, becomes a
+    line when Beat This!'s beats inside it sit on the run's grid and not on
+    that line's; the beats or the half beats, since a fast band's sections sit
+    on the kick or the snare, and the run's line takes the half the network
+    is on. Each change lands on the new grid's beat where the attacks and the
+    beats leave the old one (_cut_between_grids), and the song's tempo
+    resumes after the run on its own grid where the attacks still sit on it.
+    The precision engine's lines only; the analysis as it was otherwise."""
+    points = list(getattr(analysis, "points", None) or [])
+    sections = list(getattr(analysis, "sections", None) or [])
+    if not params.TEMPO_RUNS_BEAT_THIS or getattr(analysis, "engine", "") != "precision" \
+            or len(sections) < 2 or not points or any(getattr(p, "manual", False) for p in points):
+        return analysis
+    # The sections keep the core's pulse and the lines have been read at the
+    # map's octave since: tempi are compared with octaves apart as the same.
+    runs = _tempo_runs(sections)
+    if len(runs) < 2:
+        return analysis
+    found = heard()
+    if found is None or len(found) < params.TEMPO_RUNS_MIN_BEATS:
+        return analysis
+    beats = np.sort(np.asarray(found, dtype=float)) * 1000.0
+    times = np.asarray(analysis.attack_times, dtype=float) * 1000.0
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    if times.size != weights.size:
+        return analysis
+    lines = [(float(p.offset_ms), float(p.bpm)) for p in points]
+
+    def governing(moment: float) -> tuple[float, float]:
+        line = lines[0]
+        for candidate in lines:
+            if candidate[0] <= moment:
+                line = candidate
+        return line
+
+    for run in runs:
+        lo, hi = run["start"] * 1000.0, run["end"] * 1000.0
+        offset, bpm = run["line"] = governing(0.5 * (lo + hi))
+        run["same"] = _same_tempo(run["bpm"], bpm, params.TEMPO_RUNS_PCT)
+        run["heard"] = beats[(beats >= lo) & (beats < hi)]
+        run["taken"] = False
+        if run["same"] or run["heard"].size < params.TEMPO_RUNS_MIN_BEATS:
+            continue
+        own_offset = sections[run["best"]].phase * 1000.0
+        own = float(np.mean(_off_grid(run["heard"], own_offset, 2.0 * run["bpm"])
+                            <= params.TEMPO_RUNS_ON * 60000.0 / run["bpm"]))
+        other = float(np.mean(_off_grid(run["heard"], offset, 2.0 * bpm)
+                              <= params.TEMPO_RUNS_ON * 60000.0 / bpm))
+        run["taken"] = own >= params.TEMPO_RUNS_SHARE and other <= own - params.TEMPO_RUNS_GAP
+    if not any(run["taken"] for run in runs):
+        return analysis
+
+    def grid(run: dict, bpm: float, first: float | None = None) -> float:
+        """The run's grid at ``bpm`` (its offset, ms) on the phase its attacks
+        keep: counted from ``first``, the song's own grid, where they sit near
+        it, else from the run's longest section; on the half beat where Beat
+        This!'s beats are (PHASE_BEAT_THIS's test)."""
+        window = (times >= run["start"] * 1000.0) & (times <= run["end"] * 1000.0)
+        t, w = times[window], weights[window]
+        step = 60000.0 / bpm
+
+        def settled(start: float):
+            miss = t - (start + np.round((t - start) / step) * step)
+            near = np.abs(miss) <= params.ONE_LINE_PHASE_TOL * step
+            if int(near.sum()) < params.ONE_LINE_PHASE_MIN or float(w[near].sum()) <= 0:
+                return None
+            share = float(w[near].sum()) / max(float(w[np.abs(miss) <= 0.25 * step].sum()), 1e-12)
+            return start + float(np.average(miss[near], weights=w[near])), share
+
+        offset = sections[run["best"]].phase * 1000.0
+        tried = settled(first) if first is not None else None
+        if tried is not None and tried[1] >= 0.35:
+            offset = tried[0]
+        if run["heard"].size >= params.PHASE_BEAT_THIS_MIN_BEATS:
+            on = np.mod((run["heard"] - offset) / step, 1.0)
+            on = np.minimum(on, 1.0 - on)
+            if float(np.median(0.5 - on)) < params.PHASE_BEAT_THIS_GAIN * float(np.median(on)):
+                offset += 0.5 * step
+        tried = settled(offset)
+        return tried[0] if tried is not None else offset
+
+    def octave(run: dict) -> float:
+        """The run's tempo at the octave Beat This! counts it, under the cap."""
+        tempo = 60000.0 / float(np.median(np.diff(run["heard"])))
+        bpm = run["bpm"] * min((1.0, 0.5, 2.0), key=lambda f: abs(np.log2(tempo / (run["bpm"] * f))))
+        while params.OCTAVE_CAP and bpm > params.OCTAVE_CAP_BPM:
+            bpm /= 2.0
+        return bpm
+
+    out = list(lines)
+    previous = None                       # the last run's line, when it took one of its own
+    for n, run in enumerate(runs):
+        lo, hi = run["start"] * 1000.0, run["end"] * 1000.0
+        if run["taken"]:
+            bpm = octave(run)
+            offset, step = grid(run, bpm), 60000.0 / bpm
+            if n == 0:
+                start = offset + np.ceil((lo - 0.25 * step - offset) / step - 1e-9) * step
+            else:
+                left = previous if previous is not None else run["line"]
+                start = _cut_between_grids(times, weights, beats, lo, left, (offset, bpm),
+                                           runs[n - 1]["start"] * 1000.0 + 4.0 * 60000.0 / left[1], hi)
+            out = [line for line in out if not min(start, lo) - 0.5 * step <= line[0] < hi]
+            out.append((float(start), float(bpm)))
+            previous = out[-1]
+        elif previous is not None and run["same"]:
+            # Back at the song's tempo after a run at another.
+            main_offset, main_bpm = run["line"]
+            keeps = any(abs(run["bpm"] * f / main_bpm - 1.0) <= params.TEMPO_RUNS_SAME
+                        for f in (1.0, 2.0, 0.5))
+            bpm = main_bpm if keeps else octave(run)
+            offset, step = grid(run, bpm, main_offset if keeps else None), 60000.0 / bpm
+            start = _cut_between_grids(times, weights, beats, lo, previous, (offset, bpm),
+                                       previous[0] + 4.0 * 60000.0 / previous[1], hi)
+            out = [line for line in out if not previous[0] < line[0] < start + 4.0 * step]
+            out.append((float(start), float(bpm)))
+            previous = None
+        elif run["same"]:
+            previous = None
+    out.sort()
+    # osu! runs the first line back to 0 s: a run's line ahead of the song's
+    # own would take the start with it, so the song's line moves back first.
+    first = min(lines)
+    if out[0] != first and not runs[0]["taken"]:
+        step = 60000.0 / first[1]
+        back = first[0] - np.floor((first[0] - max(0.0, runs[0]["start"] * 1000.0)) / step) * step
+        if back < out[0][0] - 4.0 * step:
+            out.insert(0, (float(back), first[1]))
+    out = red_lines._snap_whole_lines(out, times / 1000.0, weights, float(analysis.duration))
+    return phrases._with_lines(analysis, out, beats=red_lines._beats_of(out, float(analysis.duration)))
+
+
 def _load_beat_this():
     """A new ONNX Runtime session on the model; None without one or the other."""
     path = params.ROOT / "assets" / "models" / params.BEAT_THIS_MODEL

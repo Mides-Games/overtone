@@ -1069,6 +1069,90 @@ class ForeignLinesTests(unittest.TestCase):
             self.assertIs(overtone._foreign_lines_by_beat_this(a, lambda: heard), a)
 
 
+class TempoRunsTests(unittest.TestCase):
+    """A stretch at another tempo that the confidence floor dropped gets its
+    line back when Beat This! follows it."""
+
+    @staticmethod
+    def _grid(start, bpm, stop):
+        return start + np.arange(int(np.ceil((stop - start) / (60000.0 / bpm) - 1e-9))) * (60000.0 / bpm)
+
+    def _analysis(self, parts, points, duration, engine="precision", sections=None):
+        """``parts``: (first beat ms, bpm, stop ms) per stretch; every beat an
+        attack of weight 3 with a weight-1 attack on its half beat."""
+        import overtone
+        times, weights, built = [], [], []
+        for start, bpm, stop in parts:
+            beats = self._grid(start, bpm, stop)
+            times += list(beats) + list(beats + 30000.0 / bpm)
+            weights += [3.0] * beats.size + [1.0] * beats.size
+            built.append(overtone.GridSection(start / 1000.0, stop / 1000.0, 60.0 / bpm, start / 1000.0,
+                                              int(beats.size), 20.0, 1.0))
+        order = np.argsort(times)
+        return overtone.Analysis(source="x", duration=duration, beats=np.zeros(0), local_bpms=np.zeros(0),
+                                 points=points, hop_length=512, sample_rate=44100, subdivision=1.0,
+                                 attack_times=np.asarray(times)[order] / 1000.0,
+                                 attack_weights=np.asarray(weights)[order],
+                                 sections=built if sections is None else sections, engine=engine)
+
+    def test_a_dropped_tempo_takes_its_line_on_the_first_attack_after_a_pause(self):
+        import overtone
+        # My Heart Will Go On: 140, a pause, then 200 for the rest; one line at 140
+        parts = [(500.0, 140.0, 35000.0), (38100.0, 200.0, 120000.0)]
+        a = self._analysis(parts, [TimingPoint(500.0, 140.0, 0.6, 0)], 120.0)
+        heard = np.concatenate([self._grid(*p) for p in parts]) / 1000.0
+        out = overtone._tempo_runs_by_beat_this(a, lambda: heard)
+        self.assertEqual([(round(p.offset_ms), round(p.bpm, 2)) for p in out.points],
+                         [(500, 140.0), (38100, 200.0)])
+
+    def test_the_songs_tempo_resumes_on_its_own_grid_after_the_run(self):
+        import overtone
+        # 200, 85 beats at 170, then 200 again where the first grid would be
+        parts = [(0.0, 200.0, 60000.0), (60000.0, 170.0, 90000.0), (90000.0, 200.0, 150000.0)]
+        a = self._analysis(parts, [TimingPoint(0.0, 200.0, 0.5, 0)], 150.0)
+        heard = np.concatenate([self._grid(*p) for p in parts]) / 1000.0
+        out = overtone._tempo_runs_by_beat_this(a, lambda: heard)
+        self.assertEqual([(round(p.offset_ms), round(p.bpm, 2)) for p in out.points],
+                         [(0, 200.0), (60000, 170.0), (90000, 200.0)])
+
+    def test_a_run_on_the_half_beats_takes_the_half_the_beats_are_on(self):
+        import overtone
+        # the 200 section's grid sits on the snare, half a beat after the beats
+        parts = [(500.0, 140.0, 35000.0), (38100.0, 200.0, 120000.0)]
+        a = self._analysis(parts, [TimingPoint(500.0, 140.0, 0.6, 0)], 120.0)
+        sections = [a.sections[0],
+                    dataclasses.replace(a.sections[1], phase=a.sections[1].phase + 0.150)]
+        a = dataclasses.replace(a, sections=sections)
+        heard = np.concatenate([self._grid(*p) for p in parts]) / 1000.0
+        out = overtone._tempo_runs_by_beat_this(a, lambda: heard)
+        self.assertEqual([(round(p.offset_ms), round(p.bpm, 2)) for p in out.points],
+                         [(500, 140.0), (38100, 200.0)])
+
+    def test_a_section_the_network_does_not_follow_adds_no_line(self):
+        import overtone
+        # the core read 170 for half a minute; the beats never left the 200 grid
+        parts = [(0.0, 200.0, 60000.0), (60000.0, 170.0, 90000.0), (90000.0, 200.0, 150000.0)]
+        a = self._analysis(parts, [TimingPoint(0.0, 200.0, 0.5, 0)], 150.0)
+        heard = self._grid(0.0, 200.0, 150000.0) / 1000.0
+        self.assertIs(overtone._tempo_runs_by_beat_this(a, lambda: heard), a)
+
+    def test_short_runs_other_engines_and_the_flag_leave_the_lines(self):
+        import overtone
+        parts = [(500.0, 140.0, 35000.0), (38100.0, 200.0, 120000.0)]
+        heard = np.concatenate([self._grid(*p) for p in parts]) / 1000.0
+        a = self._analysis(parts, [TimingPoint(500.0, 140.0, 0.6, 0)], 120.0)
+        self.assertIs(overtone._tempo_runs_by_beat_this(a, lambda: None), a)
+        with mock.patch.object(overtone.params, "TEMPO_RUNS_BEAT_THIS", False):
+            self.assertIs(overtone._tempo_runs_by_beat_this(a, lambda: heard), a)
+        legacy = self._analysis(parts, [TimingPoint(500.0, 140.0, 0.6, 0)], 120.0, engine="legacy")
+        self.assertIs(overtone._tempo_runs_by_beat_this(legacy, lambda: heard), legacy)
+        # eight seconds at another tempo are a fill, not a section
+        short = [(500.0, 140.0, 35000.0), (38100.0, 200.0, 46000.0)]
+        b = self._analysis(short, [TimingPoint(500.0, 140.0, 0.6, 0)], 46.0)
+        self.assertIs(overtone._tempo_runs_by_beat_this(
+            b, lambda: np.concatenate([self._grid(*p) for p in short]) / 1000.0), b)
+
+
 class PhaseBeatThisTests(unittest.TestCase):
     """PHASE_BEAT_THIS: a line half a beat off Beat This!'s beats moves onto them."""
 

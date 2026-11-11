@@ -684,6 +684,44 @@ FOREIGN_LINES_MIN_BEATS = 8
 FOREIGN_LINES_ON = 0.1
 FOREIGN_LINES_RATIO = 0.5
 
+#: A stretch at another tempo that the confidence floor dropped gets its red
+#: line back when Beat This! follows it (TEMPO_RUNS_BEAT_THIS, before the
+#: half-beat check). A live band's sections sit 14-27 ms from their attacks,
+#: so none reaches the 0.75 floor and the song keeps one line, the likeliest
+#: section's, for its whole length: DragonForce's *My Heart Will Go On* (140
+#: for 38 s, then 200) came out as 140 throughout, though the core had both
+#: sections. Consecutive sections within TEMPO_RUNS_TOL of each other are one
+#: run, on its longest section's grid; a run of TEMPO_RUNS_MIN_S or more whose
+#: tempo is more than TEMPO_RUNS_PCT from the line over it (octaves apart
+#: count as the same) is taken when at least TEMPO_RUNS_SHARE of Beat This!'s
+#: beats inside it (TEMPO_RUNS_MIN_BEATS or more) sit within TEMPO_RUNS_ON of
+#: a beat of its grid's beats or half beats, and TEMPO_RUNS_GAP fewer on the
+#: line's. Half beats count because a fast band's sections sit on the kick or
+#: the snare; the run's line then takes the half Beat This! is on. Each
+#: change goes to the beat of the new grid, within TEMPO_RUNS_REACH_S of the
+#: sections' boundary, where leaving the old grid explains the attacks (by
+#: their distance to a quarter beat, weighted) and Beat This!'s beats (each
+#: worth TEMPO_RUNS_BEAT_WEIGHT median attacks) best; after a pause of
+#: TEMPO_RUNS_PAUSE_BEATS beats it is the first strong attack's beat when that
+#: explains them within TEMPO_RUNS_PAUSE_SLACK beats' worth. After the run the
+#: song's tempo (within TEMPO_RUNS_SAME) resumes on its own grid where the
+#: attacks still sit on it, else on the phase they keep.
+#: Measured on this machine's ranked bands-variable (2026-11-10, replayed on a
+#: local run of master 037664a): see docs/timeline.md.
+TEMPO_RUNS_BEAT_THIS = True
+TEMPO_RUNS_TOL = 0.02
+TEMPO_RUNS_MIN_S = 10.0
+TEMPO_RUNS_PCT = 3.0
+TEMPO_RUNS_MIN_BEATS = 16
+TEMPO_RUNS_ON = 0.1
+TEMPO_RUNS_SHARE = 0.75
+TEMPO_RUNS_GAP = 0.3
+TEMPO_RUNS_REACH_S = 8.0
+TEMPO_RUNS_SAME = 0.005
+TEMPO_RUNS_PAUSE_BEATS = 4.0
+TEMPO_RUNS_PAUSE_SLACK = 4.0
+TEMPO_RUNS_BEAT_WEIGHT = 2.0
+
 #: The precision engine's lines move later by ATTACK_RISE_SLOPE ms for each ms
 #: the song's strong on-beat attacks take to peak on the onset envelope (within
 #: ATTACK_RISE_REACH_S) beyond ATTACK_RISE_MEAN_MS, at most ATTACK_RISE_MAX_MS,
