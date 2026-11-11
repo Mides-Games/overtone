@@ -832,6 +832,10 @@
    "where": "python-only",
    "why": "the osu! conventions run after either engine, in Python; the Rust engine's report stops at the core's lines"
   },
+  "_tempo_runs_by_beat_this": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine and Beat This! is an ONNX model held in Python; the Rust engine carries no model"
+  },
   "_foreign_lines_by_beat_this": {
    "where": "python-only",
    "why": "the osu! conventions run after either engine and Beat This! is an ONNX model held in Python; the Rust engine carries no model"

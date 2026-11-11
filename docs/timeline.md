@@ -20,6 +20,68 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-10 · A stretch at another tempo gets its red line back when Beat This! follows it
+
+### Changed
+
+- A run of the core's sections at another tempo than the line over it becomes a red line
+  when Beat This! follows it (`TEMPO_RUNS_BEAT_THIS`, `_tempo_runs_by_beat_this`, after
+  the tidying and before the half-beat check, on either engine). The precision engine
+  keeps a line per section that reaches the 0.75 confidence floor, or the likeliest
+  section's alone; a live band's sections sit 14-27 ms from their attacks and never
+  reach it, so DragonForce's *My Heart Will Go On* (140 for 38 s, then 200) came out
+  at 140 throughout though the core's report had both sections. Consecutive sections
+  within 2 % are one run on its longest section's grid; a run of 10 s or more, more
+  than 3 % from the line over it (octaves apart are the same tempo), is taken when 75 %
+  of Beat This!'s beats inside it (16 or more) sit within a tenth of a beat of its
+  beats or half beats and 30 points fewer on the line's.
+- Each change lands on the new grid's beat, within 8 s of the sections' boundary, where
+  leaving the old grid explains the attacks and the network's beats best
+  (`_cut_between_grids`); after a pause of four beats, on the first strong attack's
+  beat when that explains them nearly as well. After the run the song's tempo resumes
+  on its own grid where the attacks still sit on it.
+- `tempo-runs-off` in the server's experiments turns it off.
+
+### Measured
+
+Replayed with `bench/replay.py` on local runs of master 037664a over this machine's
+ranked library (2026-11-10; its splits are this library's, not the server's, so the
+figures do not continue the tables below). With the flag off the replay reproduces
+every run (0 fixed, 0 broken on all three stages).
+
+| stage | split | audios replayed | songs rankable | maps rankable | exact maps |
+|---|---|---|---|---|---|
+| bands-variable | dev | 111 of 159 (both splits) | 49.6 → 49.6 % | 56.1 → 56.1 % | 44.1 → 44.1 % |
+| bands-variable | held out | | 52.4 → 54.8 % | 62.6 → 66.1 % | 41.9 → 45.4 % |
+| anime-variable | dev | 47 of 68 (both splits) | 6.7 → 6.7 % | 8.7 → 8.7 % | 8.7 → 8.7 % |
+| anime-variable | held out | | 17.4 → 17.4 % | 20.7 → 20.7 % | 11.6 → 11.6 % |
+| anime-single | dev | 60 of 67 (both splits) | 79.6 → 79.6 % | 86.2 → 86.2 % | 61.2 → 61.2 % |
+| anime-single | held out | | 83.3 → 83.3 % | 91.7 → 91.7 % | 50.0 → 50.0 % |
+
+Seven songs' lines change (six in bands-variable, one in anime-variable, none in
+anime-single), no map goes from rankable to a miss, and one song changes verdict:
+
+- *My Heart Will Go On* (held out): 140 at 7 601 ms and 200 at 38 105 ms, against the
+  map's 7 576 and 38 076; its 8 maps go from a miss (941 of 1 085 beats over 5 ms) to
+  exact (0 of 1 252).
+- *My Spirit Will Go On*, *Symphony of the Night* and *Cry for Eternity* (dev) take the
+  tempo their maps have (170 at 260 588 ms against 260 555; 145 at 144 390 against
+  144 368; 140 then 200), and stay misses: the return to 200 lands 3.6 s late on the
+  first, the return to 177 5.2 s late on the second, and on *Cry for Eternity* the
+  change to 200 lands 0.6 s late, so more of its beats sit over 5 ms than before
+  (1 551 of 3 227 → 1 900 of 3 186).
+- *Through The Fire And Flames* (dev) takes a 170 line from 238.9 to 287.9 s that its
+  one-line map at 200 does not have; a miss before and after (2 945 of 2 945 beats over
+  5 ms → 2 908 of 2 922).
+- *Screaming Bloody Murder (Sped Up & Cut Ver)* (dev) takes an 88 BPM line at 336 ms
+  ahead of the map's first line at 22 808; its 8 maps stay exact.
+- *One In A Billion* (anime-variable dev) takes 76 at 644 ms (the map: 152 at 616) and
+  187 at 30 000 (the map: 30 582); a miss before and after.
+
+The server's stages (`bench/remote.py run`) are not measured.
+
+---
+
 ## Unreleased — 2026-11-09 · Slow attacks heard later; lines the network hears on the main grid rejoin it
 
 ### Changed
