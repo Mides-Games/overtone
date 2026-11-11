@@ -956,6 +956,43 @@ class RunRetentionTests(unittest.TestCase):
             self.assertTrue(all((root / i / "result.json").exists() for i in ids))
 
 
+class KilledAnalysisTests(unittest.TestCase):
+    """bench/corpus_b.run_analyses: a worker the system kills ends its song,
+    not the run."""
+
+    def _run(self, audios, jobs):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import io
+        import corpus_b
+        import dying_worker
+        todo = [({"id": f"s{n:05d}"}, audio) for n, audio in enumerate(audios)]
+        with mock.patch("sys.stdout", new_callable=io.StringIO):
+            return corpus_b, [(track["id"], result) for track, result in
+                              corpus_b.run_analyses(todo, "python", None, jobs, work=dying_worker.analyse)]
+
+    def test_a_killed_song_answers_an_error_and_the_rest_are_analysed(self):
+        for jobs in (1, 2):
+            with self.subTest(jobs=jobs):
+                audios = ["a", "slow-b", "kill-c", "slow-d", "e", "f"]
+                corpus_b, out = self._run(audios, jobs)
+                self.assertEqual([i for i, _ in out], [f"s{n:05d}" for n in range(6)])
+                self.assertEqual([r["path"] for _, r in out],
+                                 ["precision", "precision", "error", "precision", "precision", "precision"])
+                self.assertEqual(out[2][1]["message"], corpus_b.KILLED)
+                self.assertEqual(out[2][1]["lines"], [])
+                # every other song keeps its own answer, the one beside the kill included
+                self.assertEqual([r.get("audio") for _, r in out], ["a", "slow-b", None, "slow-d", "e", "f"])
+
+    def test_every_song_killed_still_ends(self):
+        _, out = self._run(["kill-a", "kill-b", "kill-c"], 2)
+        self.assertEqual([r["path"] for _, r in out], ["error"] * 3)
+
+    def test_no_songs_is_no_work(self):
+        self.assertEqual(self._run([], 2)[1], [])
+
+
 class ReplayTests(unittest.TestCase):
     """bench/replay.py: the conventions re-run on the Rust core's kept report
     give the lines the run gave (roadmap 29.1)."""

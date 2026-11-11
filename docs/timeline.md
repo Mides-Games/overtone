@@ -42,6 +42,18 @@ version is `v1.0.0-stable` (2026-10-28).
   on its own grid where the attacks still sit on it.
 - `tempo-runs-off` in the server's experiments turns it off.
 
+### Fixed
+
+- A song whose analysis the system killed took its whole measurement run with it
+  (`bench/corpus_b.py` `run_analyses`, 2026-11-11). With one job the analysis ran in
+  the run's own process; with more, a dead worker broke the pool and every song still
+  waiting. On the server, where v3 answers the songs the Rust core refuses, one song
+  of anime-variable dev needs more than the service's memory cap (the run was killed
+  at 2 875 MB), so that stage died at the same song on every run and had no dev
+  report on master 037664a or after. Every analysis now runs in a worker process: when
+  one dies, the songs in flight are analysed again one at a time, a song that dies
+  alone answers an error (never cached, counted as unanswered) and the rest go on.
+
 ### Measured
 
 Replayed with `bench/replay.py` on local runs of master 037664a over this machine's
