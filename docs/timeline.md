@@ -132,6 +132,28 @@ offset.
   put such a line on some, but not as a rule: dev 2 songs fixed and 6 to 9 broken, held
   out 0 fixed and 1 to 3 broken; anime-single dev 0 fixed and 27 to 60 broken, held
   out 7 to 17 broken.
+- **A stretch at half the BPM where the attacks skip every other beat**: counted
+  first, on anime-variable's replayed audios (windows of 8 engine beats, the lighter
+  of the odd and even beats' attack weight against the heavier). Where the map writes
+  half the engine's tempo (6 607 windows, 37 audios) the ratio is 0.2 or under in
+  9.9 % of them; where it writes the same tempo (184 247), in 2.0 %, five times as
+  many windows. The attacks do not show where a mapper halves.
+- **Looser tempo runs** (`TEMPO_RUNS_MIN_S` 4, `TEMPO_RUNS_PCT` 1.0,
+  `TEMPO_RUNS_MIN_BEATS` 8; or `TEMPO_RUNS_SHARE` 0.6 with `TEMPO_RUNS_GAP` 0.2),
+  replayed on e1995d8's bundles: no song's verdict changes on any of the three stages
+  (the flags do reach the replay: tempo runs off take bands held out 53.7 → 51.2 %).
+- **The octave from the engine's tempo alone**: of the songs that miss with the
+  engine at twice every map's tempo (anime-single 9, bands 3, anime-variable 11),
+  no BPM floor leaves more of them than songs that pass. At 220 BPM or more there
+  are 10 against 32 that pass.
+
+What anime-variable's dev songs miss on, beyond the near misses above: among the
+songs the core answers at the map's tempo over 90 % of their length, a map's
+first line on another phase over 0.1-3 s (the pickup line, rejected above), or a
+constant 10-16 ms from the lead (the mappers' own spread). In the songs whose tempo
+misses, the maps time the song beat by beat: a line every 0.3-1 s, the BPM jumping
+up to 10 % between them (*Seven Doors*, *BAKU*, *Clattanoia*, *Ark*), where the
+core finds 1-10 steady sections.
 
 ---
 
