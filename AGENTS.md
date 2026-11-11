@@ -72,7 +72,7 @@ deploy. Their history up to the split is in this repository too. Mentions here o
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (696 on 2026-11-11)
+.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (702 on 2026-11-11)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage

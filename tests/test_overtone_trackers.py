@@ -1069,6 +1069,71 @@ class ForeignLinesTests(unittest.TestCase):
             self.assertIs(overtone._foreign_lines_by_beat_this(a, lambda: heard), a)
 
 
+class SongTripletAndDoubleTests(unittest.TestCase):
+    """A whole song read at 2/3 or at half of its tempo, moved when Beat This!
+    hears it at the map's."""
+
+    @staticmethod
+    def _analysis(lines, duration=120.0, manual=False):
+        analysis = Analysis("x.wav", duration, np.zeros(0), np.zeros(0), [], 128, 44100, 1.0)
+        analysis.points = [TimingPoint(o, b, 1.0, 0, manual=manual) for o, b in lines]
+        return analysis
+
+    @staticmethod
+    def _beats(start, bpm, stop=120000.0):
+        return (start + np.arange(int((stop - start) / (60000.0 / bpm))) * (60000.0 / bpm)) / 1000.0
+
+    def test_a_song_read_at_two_thirds_moves_to_the_tempo_beat_this_hears(self):
+        import overtone
+        # Tenkyou no Alderamin: 131.333 for a song mapped at 197
+        a = self._analysis([(2231.9, 131.3333)])
+        out = overtone._song_triplet_by_beat_this(a, lambda: self._beats(2231.9, 197.0))
+        self.assertEqual([(round(p.offset_ms, 1), round(p.bpm, 2)) for p in out.points], [(2231.9, 197.0)])
+        self.assertAlmostEqual(float(out.beats[1] - out.beats[0]), 60.0 / 197.0, places=6)
+
+    def test_the_line_takes_the_half_beat_beat_this_is_on(self):
+        import overtone
+        # the old grid's first beat was a half beat of the song's
+        half = 0.5 * 60000.0 / 197.0
+        a = self._analysis([(2231.9, 131.3333)])
+        out = overtone._song_triplet_by_beat_this(a, lambda: self._beats(2231.9 + half, 197.0))
+        self.assertAlmostEqual(out.points[0].offset_ms, 2231.9 + half, places=3)
+
+    def test_two_thirds_three_quarters_and_octaves_heard_leave_the_song(self):
+        import overtone
+        a = self._analysis([(500.0, 187.0)])
+        for heard in (187.0 * 2 / 3, 187.0 * 0.75, 93.5, 374.0, 187.0, 187.0 * 1.4):
+            with self.subTest(heard=heard):
+                self.assertIs(overtone._song_triplet_by_beat_this(a, lambda h=heard: self._beats(500.0, h)), a)
+        self.assertIs(overtone._song_triplet_by_beat_this(a, lambda: None), a)
+        manual = self._analysis([(500.0, 131.3333)], manual=True)
+        self.assertIs(overtone._song_triplet_by_beat_this(manual, lambda: self._beats(500.0, 197.0)), manual)
+        with mock.patch.object(overtone.params, "SONG_TRIPLET_BEAT_THIS", False):
+            b = self._analysis([(500.0, 131.3333)])
+            self.assertIs(overtone._song_triplet_by_beat_this(b, lambda: self._beats(500.0, 197.0)), b)
+
+    def test_a_song_read_at_half_doubles_when_beat_this_hears_double(self):
+        import overtone
+        # Kyouki Chinden: 140 for a song mapped at 280
+        a = self._analysis([(2100.3, 140.0)])
+        out = overtone._song_double_by_beat_this(a, lambda: self._beats(2100.3, 280.0))
+        self.assertEqual([(p.offset_ms, p.bpm) for p in out.points], [(2100.3, 280.0)])
+        self.assertAlmostEqual(float(out.beats[1] - out.beats[0]), 60.0 / 280.0, places=6)
+
+    def test_a_slow_song_and_a_song_heard_at_half_are_not_doubled(self):
+        import overtone
+        # Aerials: 80, heard at 158, mapped at 80
+        slow = self._analysis([(900.0, 80.0)])
+        self.assertIs(overtone._song_double_by_beat_this(slow, lambda: self._beats(900.0, 160.0)), slow)
+        # the network counts most fast songs at half: no evidence
+        fast = self._analysis([(900.0, 180.0)])
+        self.assertIs(overtone._song_double_by_beat_this(fast, lambda: self._beats(900.0, 90.0)), fast)
+        self.assertIs(overtone._song_double_by_beat_this(fast, lambda: self._beats(900.0, 180.0)), fast)
+        with mock.patch.object(overtone.params, "SONG_DOUBLE_BEAT_THIS", False):
+            a = self._analysis([(900.0, 140.0)])
+            self.assertIs(overtone._song_double_by_beat_this(a, lambda: self._beats(900.0, 280.0)), a)
+
+
 class TempoRunsTests(unittest.TestCase):
     """A stretch at another tempo that the confidence floor dropped gets its
     line back when Beat This! follows it."""
@@ -1387,6 +1452,23 @@ class MergeSteadyLinesTests(unittest.TestCase):
         import overtone
         self.assertEqual(overtone._steady_line([(0.0, 187.52), (9000.0, 187.47)]), [(0.0, 187.5)])
         self.assertEqual(overtone._steady_line([(0.0, 94.31), (9000.0, 94.29)]), [(0.0, 94.3)])
+
+    def test_the_merged_bpm_is_the_one_the_song_holds_longest(self):
+        import overtone
+        # KIZUNA MUSIC: 189 for 288 s, then 188.63 for its last 26 s
+        a = self._analysis([(2822.2, 189.0), (291377.1, 188.63)])
+        a.duration = 317.0
+        with mock.patch.object(overtone, "MERGE_STEADY_LINES", True):
+            self.assertEqual([(p.offset_ms, p.bpm) for p in overtone._merge_steady_lines(a).points],
+                             [(2822.2, 189.0)])
+            # by the lines' count, as it was: neither line's tempo
+            with mock.patch.object(overtone.params, "MERGE_STEADY_BY_SPAN", False):
+                self.assertEqual([(p.offset_ms, p.bpm) for p in overtone._merge_steady_lines(a).points],
+                                 [(2822.2, 188.81)])
+        # a short first line does not name the song: 199 for 7.7 s, 199.635 for 8.1 s, 200.015 after
+        lines = [(1652.1, 199.0), (9320.4, 199.635), (17418.9, 200.015)]
+        self.assertEqual(overtone._steady_line(lines, 91000.0), [(1652.1, 200.0)])
+        self.assertEqual(overtone._steady_line(lines), [(1652.1, 199.5)])
 
     def test_real_changes_meters_and_manual_lines_are_left_alone(self):
         import overtone

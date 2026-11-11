@@ -11,7 +11,7 @@
 
 <p align="center">
   <img alt="licence" src="https://img.shields.io/badge/licence-MIT-blue" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-696%20Python%20%C2%B7%20232%20Rust-6ee7b7" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-702%20Python%20%C2%B7%20232%20Rust-6ee7b7" />
   <img alt="engine" src="https://img.shields.io/badge/engine-Python%20%2B%20Rust-orange" />
 </p>
 
@@ -110,7 +110,7 @@ docs/      design, roadmap, timeline
 Every gate is a one-line local command; nothing runs in CI.
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # 696 tests
+.venv/Scripts/python.exe -m unittest discover -s tests   # 702 tests
 cargo test --workspace                                   # 232 tests
 .venv/Scripts/python.exe bench/benchmark.py              # must be 24/24
 ```
