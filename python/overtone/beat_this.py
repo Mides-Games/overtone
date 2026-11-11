@@ -107,6 +107,79 @@ def _song_octave_by_beat_this(analysis: Analysis, heard) -> Analysis:
     return replace(analysis, points=out)
 
 
+def _song_triplet_by_beat_this(analysis: Analysis, heard) -> Analysis:
+    """Every red line at 3/2 of its tempo when Beat This! hears the song there
+    (SONG_TRIPLET_BEAT_THIS).
+
+    A song in a shuffled or dotted rhythm has as many attacks on a grid at
+    2/3 of its beat as on the beat itself, and the core settles on the slower
+    one: 131.33 for a song mapped at 197. No octave rule can find it, the two
+    are not octaves apart. When the network's tempo is within
+    SONG_TRIPLET_SLACK of 3/2 of the song's own, every line moves to 3/2 of
+    its BPM; its beat stays where it was or moves half a new beat, whichever
+    puts the grid nearer the network's beats. Only this way round: where the
+    network hears 2/3 or 3/4 of the engine's tempo the maps side with the
+    engine (anime-single, 2026-11-11)."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not params.SONG_TRIPLET_BEAT_THIS or not points or any(getattr(p, "manual", False) for p in points):
+        return analysis
+    duration_ms = float(analysis.duration) * 1000.0
+    song = red_lines._song_tempo(points, duration_ms)
+    found = heard() if song else None
+    if found is None or len(found) < 16:
+        return analysis
+    beats = np.sort(np.asarray(found, dtype=float) * 1000.0)
+    tempo = 60000.0 / float(np.median(np.diff(beats)))
+    if abs(tempo / (1.5 * song) - 1.0) > params.SONG_TRIPLET_SLACK:
+        return analysis
+    out = []
+    for n, point in enumerate(points):
+        end = points[n + 1].offset_ms if n + 1 < len(points) else duration_ms
+        target = point.bpm * 1.5
+        period = 60000.0 / target
+        inside = beats[(beats >= point.offset_ms) & (beats <= end)]
+        offset = point.offset_ms
+        if inside.size >= 2:
+            def distance(start: float) -> float:
+                miss = (inside - start) / period
+                return float(np.median(np.abs(miss - np.round(miss)))) * period
+
+            offset = min((point.offset_ms, point.offset_ms + 0.5 * period), key=distance)
+        out.append(replace(point, bpm=target, offset_ms=offset))
+    lines = [(float(p.offset_ms), float(p.bpm)) for p in out]
+    return replace(analysis, points=out, beats=red_lines._beats_of(lines, float(analysis.duration)))
+
+
+def _song_double_by_beat_this(analysis: Analysis, heard) -> Analysis:
+    """Every red line at twice its tempo when Beat This! hears the song there
+    and the song's own tempo is SONG_DOUBLE_FLOOR_BPM or more
+    (SONG_DOUBLE_BEAT_THIS).
+
+    The octave cap and the map range read a song mapped at 240-280 at half.
+    The network hearing an octave apart is no evidence by itself: it counts
+    most fast songs at half, and the maps side with the engine there (69 of
+    75 songs). Hearing double is rare and, from 120 up, was the map's tempo
+    every time (three songs of three, dev only; the two under 110 were
+    mapped at the engine's tempo). Every beat of the line stays a beat."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not params.SONG_DOUBLE_BEAT_THIS or not points or any(getattr(p, "manual", False) for p in points):
+        return analysis
+    duration_ms = float(analysis.duration) * 1000.0
+    song = red_lines._song_tempo(points, duration_ms)
+    if not song or song < params.SONG_DOUBLE_FLOOR_BPM:
+        return analysis
+    found = heard()
+    if found is None or len(found) < 16:
+        return analysis
+    beats = np.sort(np.asarray(found, dtype=float) * 1000.0)
+    tempo = 60000.0 / float(np.median(np.diff(beats)))
+    if abs(tempo / (2.0 * song) - 1.0) > params.LOCAL_OCTAVE_SLACK:
+        return analysis
+    out = [replace(point, bpm=point.bpm * 2.0) for point in points]
+    lines = [(float(p.offset_ms), float(p.bpm)) for p in out]
+    return replace(analysis, points=out, beats=red_lines._beats_of(lines, float(analysis.duration)))
+
+
 def _beat_grid_cost(lines: list[tuple[float, float]], beats_ms: np.ndarray, start: float, stop: float):
     """Median distance (ms) from each beat in [start, stop) to the grid of
     the line it falls in; None with fewer than 16 beats."""

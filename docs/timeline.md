@@ -20,6 +20,97 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-11 · A song read at 2/3 or at half of its tempo; merged lines at the tempo the song holds
+
+### Changed
+
+- A song read at 2/3 of its tempo moves to 3/2 when Beat This! hears it there
+  (`SONG_TRIPLET_BEAT_THIS`, `_song_triplet_by_beat_this`, with the song's octave, on
+  either engine). A shuffled or dotted rhythm has as many attacks on a grid at 2/3 of
+  its beat as on the beat, and the core settled on the slower one: 131.33 for
+  *Tenkyou no Alderamin*, mapped at 197. The two are not octaves apart, so no octave
+  rule saw it. Every line moves when the network's tempo is within 3 % of 3/2 of the
+  song's own, on the beat or the half beat nearer the network's beats. Only this way
+  round: where the network hears 2/3 or 3/4 of the engine's tempo the maps side with
+  the engine (three songs of three).
+- A song read at half doubles when Beat This! hears twice its tempo and that tempo is
+  115 BPM or more (`SONG_DOUBLE_BEAT_THIS`, `_song_double_by_beat_this`, after the
+  tidying): the octave cap and the map range read songs mapped at 240-280 at half.
+
+### Fixed
+
+- Near-equal lines merged into one (`_steady_line`) took the plain median of their
+  BPMs, whatever each line held: a song at 189.0 from its first beat with a line at
+  188.63 over its last 26 s was written at 188.82 and drifted off the map by the end
+  (*KIZUNA MUSIC*; 199.5 for *Aozora Jumping Heart*'s 200, 230.5 for *Kuusou
+  Mesorogiwi*'s 230). The BPM is now the median by the time each line holds
+  (`MERGE_STEADY_BY_SPAN`).
+
+### Measured
+
+Replayed on the server's master runs of 2026-11-10 (037664a; bands 114 of 163 audios,
+anime-single 592 of 674) with the tempo runs on, which is master e9e90d5; each column
+adds to the last. Songs rankable, with the songs fixed in brackets; no song that
+passed stopped passing at any step.
+
+| stage | split | e9e90d5 | + merge by span | + 3/2 | + double | exact maps |
+|---|---|---|---|---|---|---|
+| anime-single | dev (474) | 83.3 % | 83.5 % (1) | 84.0 % (2) | 84.4 % (2) | 58.8 → 59.3 % |
+| anime-single | held out (200) | 79.5 % | 80.0 % (1) | 81.0 % (2) | 81.0 % (0) | 57.9 → 58.7 % |
+| bands-variable | dev (122) | 49.2 % | 49.2 % (0) | 50.0 % (1) | 50.0 % (0) | 43.9 → 45.1 % |
+| bands-variable | held out (41) | 53.7 % | 53.7 % (0) | 53.7 % (0) | 53.7 % (0) | 47.2 → 47.2 % |
+
+The replay's own baseline sits 0.2 and 0.5 points above the server's run of the same
+code on anime-single (83.1 and 79.0 %): one and one song whose replayed lines differ
+from the run's. The doubling has no held-out case, for or against: its three songs
+(two fixed; the third, *Killer Headache*, doubles to the map's tempo and still
+misses) are all dev. anime-variable is not measured: it has no dev run on the server.
+Not yet run on the server itself.
+
+Where the songs that still miss are lost (dev, songs): anime-single 41 of 74 on a
+constant offset with the grid locked, 12 on octave or tempo, 6 on lines, 15 that v3
+answered; bands-variable 28 of 61 that v3 answered, 14 octave, 11 tempo, 5 lines, 3
+offset.
+
+### Rejected / tried and dropped
+
+- **`SONG_OCTAVE_BEAT_THIS`** (off since it was written, "until measured"): every line
+  to the network's octave. anime-single dev 83.3 → 73.4 %, held out 79.5 → 74.0 %;
+  bands dev 49.2 → 47.5 %, held out 53.7 → 48.8 %. The network counts fast songs at
+  half: of 75 songs it hears at half the engine's tempo the maps side with the engine
+  in 69, and nothing in the off-beat ratio or the tempo separates the other six.
+- **The Rust core made to answer the songs it refuses** (the 0.40 share floor and the
+  chance test lifted, on this machine's 50 refused bands songs): rankable 8 → 9 of 37
+  dev songs and 6 → 5 of 13 held out. What it refuses are songs mapped with tens to
+  hundreds of hand-placed lines; the floor is not what loses them.
+- **A per-song lead from the audio**, for the songs that miss on offset alone: over
+  559 grid-locked anime-single songs the map's own offset has a 6.2 ms spread around
+  the lead, and neither Beat This!'s beats against the grid (r = -0.11 dev, -0.36
+  held out), the attacks' mean or median distance to it (r up to +0.15 and +0.29) nor
+  the BPM predicts it; the best of them moved the share within 10 ms by under a
+  point. It is the mappers' own spread.
+- **The attack-rise lead off**: anime-single dev 83.3 → 82.5 %, held out 79.5 →
+  77.0 %; bands dev 49.2 → 48.4 %. It stays.
+- **A one-line song's BPM from the core's sections where they agree away from the
+  written one** (a weighted mean of the sections within 0.5 %, taken when it sits three
+  standard errors and 15 ms of drift from the line): it would give *Given Up* and
+  *Breaking The Habit* the 200.08 and 200.06 their maps have, where the whole-BPM snap
+  writes 200 and drifts 50 ms. But the sections are off by hundredths more often than
+  the maps are: on anime-single dev the map sides with the written BPM in 34 of 37
+  such songs, and 28 that pass would miss (3 fixed); bands dev 5 lost, none gained.
+- **A red line where the song keeps its tempo on another phase**
+  (`_phase_runs_by_beat_this`, a prototype not kept: ten or more Beat This! beats
+  steadily 50 ms or more off the grid, short of half a beat, with the attacks heavier
+  on the new phase). Counted first: such runs are the map's own phase in 17 of 18 on
+  bands and 7 of 7 on this machine's anime-variable, while near half a beat they are
+  mostly the network gone to the off-beat (36 such runs on bands where the map sides
+  with the grid). Written, it added lines to a handful of songs and put more beats
+  within 5 ms on two (*Rock, Scissors, Paper* 513 → 258 of 1 030 over), with no
+  verdict changed on any stage: what those songs miss on is a BPM a few hundredths
+  off, the item above.
+
+---
+
 ## Unreleased — 2026-11-10 · A stretch at another tempo gets its red line back when Beat This! follows it
 
 ### Changed
@@ -90,7 +181,12 @@ anime-single), no map goes from rankable to a miss, and one song changes verdict
 - *One In A Billion* (anime-variable dev) takes 76 at 644 ms (the map: 152 at 616) and
   187 at 30 000 (the map: 30 582); a miss before and after.
 
-The server's stages (`bench/remote.py run`) are not measured.
+On the server (2026-11-11): anime-single's runs on e9e90d5 score as master's did, 83.1 %
+of dev songs rankable and 79.0 % held out (474 and 200 songs). bands-variable, replayed
+on the server's master runs (114 of 163 audios; its dev run on e9e90d5 died at the
+memory cap): dev 49.2 → 49.2 %, held out 51.2 → 53.7 % of songs rankable, exact maps
+43.6 → 47.2 %, the same 8 maps fixed and none broken. anime-variable has no dev run on
+the server, before or after: one of its songs dies at the memory cap on every run.
 
 ---
 

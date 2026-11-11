@@ -273,9 +273,10 @@ def _precision_conventions(analysis: Analysis, y_mix: np.ndarray, sr: int, min_d
     analysis = red_lines._fold_local_to_map_octave(
         analysis, before, before_beats, lambda: red_lines._beat_this_tempo(y_mix, sr))
     analysis = beat_this._song_octave_by_beat_this(analysis, lambda: beat_this._beat_this_judge_beats(y_mix, sr))
+    analysis = beat_this._song_triplet_by_beat_this(analysis, lambda: beat_this._beat_this_judge_beats(y_mix, sr))
     heard = lambda: beat_this._beat_this_judge_beats(y_mix, sr)  # noqa: E731 - one judge, read once
-    return red_lines._lead_by_attack_rise(red_lines._one_line_phase(beat_this._foreign_lines_by_beat_this(beat_this._phase_by_beat_this(beat_this._tempo_runs_by_beat_this(phrases._tidy_bpms(octave_choice._lines_on_downbeats(phrases._phrase_lines(phrases._snap_whole_points(tempo_judge._tempo_judge(octave_choice._octave_rule(octave_choice._smooth_octaves(
-        red_lines._fold_lines_to_song_octave(analysis, heard))), lambda: (y_mix, sr)))))), heard), heard), heard)))
+    return red_lines._lead_by_attack_rise(red_lines._one_line_phase(beat_this._foreign_lines_by_beat_this(beat_this._phase_by_beat_this(beat_this._song_double_by_beat_this(beat_this._tempo_runs_by_beat_this(phrases._tidy_bpms(octave_choice._lines_on_downbeats(phrases._phrase_lines(phrases._snap_whole_points(tempo_judge._tempo_judge(octave_choice._octave_rule(octave_choice._smooth_octaves(
+        red_lines._fold_lines_to_song_octave(analysis, heard))), lambda: (y_mix, sr)))))), heard), heard), heard), heard)))
 
 
 def _splice_gaps(grid: Analysis, tracked: Analysis,

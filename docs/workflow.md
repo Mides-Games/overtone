@@ -115,6 +115,57 @@ Si el paso 1 no trae su test (unitario o gate), volver al paso 1.
   El ajuste Theil–Sen entrega deriva de fase en ms/minuto, offset de fase y
   residuo tras quitar la deriva. Es solo diagnóstico; no aplica correcciones.
 
+## 3.1 El ciclo de precisión: medir, mejorar, volver a medir
+
+Pedido del dueño (2026-11-11): subir los porcentajes de los stages de forma
+continua, y dejar escrito cómo. El ciclo es este, y cada vuelta termina en
+`docs/timeline.md`, gane o pierda la idea.
+
+1. **Partir de una línea base reproducible.** Los runs del servidor guardan el
+   reporte del core por audio; `bench/remote.py result <id>` y `replay <id>` los
+   bajan a `bench/.cache/remote/`. Con dev y held out de un stage,
+   `bench/replay.py` vuelve a correr las convenciones en minutos y
+   `bench/rankable.py` puntúa. Antes de creer un replay, comprobar que
+   reproduce el run con el cambio apagado (0 arreglados, 0 rotos).
+2. **Preguntar dónde se pierden las canciones, no cuánto.** Agrupar las
+   canciones que fallan por causa (`octave`, `tempo`, `lines`, `offset`,
+   `refused`) y por quién respondió (el core de Rust o v3). El grupo más
+   grande no siempre es el que se puede mover: en anime-single la mitad de los
+   fallos son de offset con la rejilla bien, y ese offset es casi todo
+   desacuerdo entre mapeadores (desviación de unos 6 ms, ningún predictor del
+   audio lo explica), así que no es por ahí.
+3. **Mirar canciones, no promedios.** Para cada fallo cercano: las líneas del
+   mapa, las del motor, las secciones del core, el tempo de Beat This! y el
+   paso de las convenciones que cambió el resultado. Una causa que se repite
+   en varias canciones es una regla candidata; una canción sola no lo es.
+4. **Contar antes de escribir la regla.** Sobre todo el corpus: cuántas veces
+   la evidencia propuesta señala al mapa y cuántas al motor. Una regla entra
+   solo si la evidencia es casi unánime y en el sentido en que lo es (Beat
+   This! a 3/2 del motor: el mapa le da la razón 5 de 5; a 2/3 o a la mitad:
+   se la da al motor, y esa mitad de la regla no se escribe).
+5. **Medir en dev y confirmar en held out.** Una regla se ajusta mirando dev;
+   held out solo confirma. Se anotan canciones arregladas y rotas en cada
+   parte; una regla que rompe mapas que hoy pasan no entra aunque sume. Si
+   held out no tiene ningún caso, se dice: "sin evidencia en contra" no es
+   "confirmado".
+6. **Detrás de un flag, con su test y sus gates.** Cada regla tiene su
+   constante en `params.py` (apagarla devuelve el comportamiento anterior), un
+   test con el caso real que la motivó y los gates del paso 2. Los gates que ya
+   fallan en `master` se nombran como tales; no se re-fija ninguna referencia.
+7. **Anotar también lo descartado.** La sección `Rejected / tried and dropped`
+   del timeline lleva la idea, el número y por qué no: es lo que evita volver a
+   probarla.
+8. **Volver al paso 2 con los números nuevos.** Tras cada mejora cambia el
+   reparto de causas; el siguiente camino se elige de nuevo, no de memoria.
+9. **Confirmar en el servidor.** El replay no ve los audios que respondió v3
+   ni un cambio en el core: lo que cambia el core, o lo que el replay no
+   cubre, se mide con `bench/remote.py run <stage> --split dev|holdout` tras
+   el deploy.
+
+Lo que el replay no puede probar: cambios en el core de Rust (hay que
+analizar el audio otra vez; con la biblioteca local, `bench/stages.py`) y las
+canciones que el core rechaza y responde v3.
+
 ## 4. Commitear: pocos commits (decisión del dueño, 2026-10-28)
 
 El historial de `master` se llenaba de commits chicos, merges de integración y

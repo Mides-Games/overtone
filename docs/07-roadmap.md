@@ -36,7 +36,7 @@ Train and the Songs browser were parked on `parked/desktop-extras`: the core is 
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **parked with the app** (2026-10-26; `parked/desktop-app`) — v0.1.0-alpha was published: per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **696** Python (645 engine + 51 worker) · **232** Rust.
+Tests: **702** Python (651 engine + 51 worker) · **232** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -1531,6 +1531,7 @@ an experiment.
 | 29.8 | **Server runs a branch** (`remote.py run --ref`): measure before merging. Lower once 29.1 replays post-processing locally; still needed for core (Rust) changes. | A run on a pushed branch reports its commit. | P2 | not started |
 | 29.9 | **Learn from the ~25,000 hand-timed maps** (27.14): a change-point classifier on attack features, then a Beat This! fine-tune on osu! timings, only after 29.1–29.4 show what the hand-written detector cannot reach. | Held-out gain on an untouched cohort over the 29.4 detector. | P2 | not started |
 | 29.10 | **Beat This! in Rust (`ort`)**, the one port that pays: one decode instead of two, and the slowest stage out of Python. Audit against golden vectors first (docs/17 §7). | Same activations within tolerance; server time per song measured before and after. | P3 | not started |
+| 29.11 | **The song's tempo against Beat This!, and the merged line's BPM.** A song the core reads at 2/3 of its beat moves to 3/2 when the network hears it there (`SONG_TRIPLET_BEAT_THIS`); one read at half doubles when the network hears double and the song's own tempo is 115 or more (`SONG_DOUBLE_BEAT_THIS`); near-equal lines merge at the BPM the song holds longest, not the lines' plain median (`MERGE_STEADY_BY_SPAN`). | Rankable songs gained on dev and held out, none lost. | P0 | **on** (2026-11-11) — replayed on the server's runs of 037664a: anime-single dev 83.3 -> 84.4 %, held out 79.5 -> 81.0 %; bands dev 49.2 -> 50.0 %, held out 53.7 unchanged; 0 lost. The doubling has no held-out case. Not yet run on the server |
 
 ## Rejected ideas
 

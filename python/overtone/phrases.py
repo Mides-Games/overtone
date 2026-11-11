@@ -537,15 +537,27 @@ def _cap_octaves(analysis: Analysis) -> Analysis:
                        local_bpms=np.array([b for _, b in lines], dtype=float)[which])
 
 
-def _steady_line(lines: list[tuple[float, float]]) -> list[tuple[float, float]] | None:
+def _steady_line(lines: list[tuple[float, float]], end_ms: float | None = None) -> list[tuple[float, float]] | None:
     """The one line a steady song's near-equal lines stand for
-    (MERGE_STEADY_LINES), or None when they are not near-equal."""
+    (MERGE_STEADY_LINES), or None when they are not near-equal.
+
+    Its BPM is the lines' median by the time each one holds, to ``end_ms``
+    (MERGE_STEADY_BY_SPAN): a song at 189 from its first beat with a line at
+    188.63 over its last seconds is at 189, where the plain median of the two
+    wrote 188.82 and drifted off the map by the end."""
     if len(lines) < 2 or any(bpm <= 0 for _, bpm in lines):
         return None
     bpms = np.array([bpm for _, bpm in lines], dtype=float)
     median = float(np.median(bpms))
     if float(np.max(np.abs(bpms / median - 1.0))) > params.MERGE_STEADY_TOL:
         return None
+    if params.MERGE_STEADY_BY_SPAN and end_ms is not None:
+        starts = np.array([offset for offset, _ in lines], dtype=float)
+        spans = np.diff(np.append(starts, max(float(end_ms), float(starts[-1]))))
+        if float(spans.sum()) > 0.0:
+            order = np.argsort(bpms, kind="stable")
+            held = np.cumsum(spans[order])
+            median = float(bpms[order][int(np.searchsorted(held, 0.5 * held[-1]))])
     for tidy in (float(round(median)), round(median * 2.0) / 2.0):
         if abs(tidy - median) <= params.MERGE_STEADY_SNAP:
             return [(float(lines[0][0]), tidy)]
@@ -559,7 +571,7 @@ def _merge_steady_lines(analysis: Analysis) -> Analysis:
             or any(getattr(p, "manual", False) for p in points)
             or len({p.meter for p in points}) > 1):
         return analysis
-    merged = _steady_line([(p.offset_ms, p.bpm) for p in points])
+    merged = _steady_line([(p.offset_ms, p.bpm) for p in points], float(analysis.duration) * 1000.0)
     if merged is None:
         return analysis
     return _with_lines(analysis, merged, beats=red_lines._beats_of(merged, float(analysis.duration)))

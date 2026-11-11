@@ -602,6 +602,17 @@ _BEAT_THIS_HEARD: list = []
 #: an octave off). When Beat This!'s tempo is near 2x or 1/2 of the song's
 #: own, every red line moves to its octave. Off until measured on the server.
 SONG_OCTAVE_BEAT_THIS = False
+#: The whole song read at 2/3 of its tempo: every line moves to 3/2 of its BPM
+#: when Beat This!'s tempo is within SONG_TRIPLET_SLACK of 3/2 of the song's
+#: own (_song_triplet_by_beat_this). Measured: docs/timeline.md, 2026-11-11.
+SONG_TRIPLET_BEAT_THIS = True
+SONG_TRIPLET_SLACK = 0.03
+#: The whole song read at half: every line doubles when Beat This! hears twice
+#: the song's own tempo and that tempo is SONG_DOUBLE_FLOOR_BPM or more
+#: (_song_double_by_beat_this, after the tidying so no cap halves it again).
+#: Measured: docs/timeline.md, 2026-11-11.
+SONG_DOUBLE_BEAT_THIS = True
+SONG_DOUBLE_FLOOR_BPM = 115.0
 
 #: A red line moved half a beat when Beat This!'s beats sit on its half beats
 #: (PHASE_BEAT_THIS): the median beat's distance to the shifted grid under
@@ -1004,6 +1015,9 @@ TIDY_BPM_DRIFT_MS = 2.0
 #: anime-single 70.6 -> 72.2 %, bands 50.9 unchanged, anime-variable 30.6
 #: unchanged; dev +1.7 / +1.6 / 0; no rankable map lost on any stage.
 MERGE_STEADY_LINES = True
+#: The merged line's BPM is the lines' median by the time each holds, not by
+#: their count (see _steady_line). Measured: docs/timeline.md, 2026-11-11.
+MERGE_STEADY_BY_SPAN = True
 MERGE_STEADY_TOL = 0.005
 MERGE_STEADY_SNAP = 0.15
 
