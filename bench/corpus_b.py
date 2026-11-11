@@ -59,6 +59,7 @@ import sys
 import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -500,20 +501,61 @@ def analyse(audio: str, engine: str, cli: str | None) -> dict:
     return result
 
 
-def run_analyses(todo: list[tuple[dict, str]], engine: str, cli: Path | None, jobs: int):
+#: What a song answers when the process analysing it was killed.
+KILLED = "the analysis was killed, most likely by the memory cap"
+
+
+def run_analyses(todo: list[tuple[dict, str]], engine: str, cli: Path | None, jobs: int, work=None):
     """Each (track, analysis) as it finishes, in manifest order, with a line
-    of progress: a whole corpus takes minutes, and silence reads as a hang."""
-    audios = [audio for _track, audio in todo]
-    args = (audios, [engine] * len(audios), [str(cli) if cli else None] * len(audios))
-    pool = ProcessPoolExecutor(max_workers=jobs) if jobs > 1 and len(audios) > 1 else None
-    try:
-        results = (pool.map if pool else map)(analyse, *args)
-        for (track, _audio), result in zip(todo, results):
-            print(f"  {track['id']:<18} {result['path']:<9} {result['seconds']:7.1f} s", flush=True)
-            yield track, result
-    finally:
-        if pool:
-            pool.shutdown()
+    of progress: a whole corpus takes minutes, and silence reads as a hang.
+
+    Every analysis runs in a worker process, one job included, so a worker the
+    system kills ends its song and not the run: on the server a song v3 needs
+    more memory for than the service's cap took the whole stage with it, every
+    time, at the same song (anime-variable dev never finished, 2026-11-10).
+    When a worker dies the pool is lost with it and does not say whose song it
+    was: the first ``jobs`` unfinished songs are each analysed again alone, a
+    song that dies alone answers an error (KILLED; an error is never cached),
+    and the rest go on in a new pool."""
+    work = work or analyse
+    cli_arg = str(cli) if cli else None
+    results: dict[int, dict] = {}
+    waiting, alone, shown = list(range(len(todo))), [], 0
+    while waiting or alone:
+        batch, workers = ([alone.pop(0)], 1) if alone else (waiting, max(1, jobs))
+        started = time.perf_counter()
+        pool = ProcessPoolExecutor(max_workers=workers)
+        futures = {n: pool.submit(work, todo[n][1], engine, cli_arg) for n in batch}
+        try:
+            for n in batch:
+                results[n] = futures[n].result()
+                while shown in results:
+                    yield _progress(todo[shown][0], results[shown])
+                    shown += 1
+            if batch is waiting:
+                waiting = []
+        except BrokenProcessPool:
+            for n in batch:
+                if n not in results and futures[n].done() and not futures[n].cancelled() \
+                        and futures[n].exception() is None:
+                    results[n] = futures[n].result()
+            unfinished = [n for n in batch if n not in results]
+            if workers == 1 and len(batch) == 1:
+                results[batch[0]] = {"lines": [], "path": "error", "message": KILLED,
+                                     "seconds": round(time.perf_counter() - started, 2)}
+            else:
+                alone.extend(unfinished[:workers])
+                waiting = unfinished[workers:]
+            while shown in results:
+                yield _progress(todo[shown][0], results[shown])
+                shown += 1
+        finally:
+            pool.shutdown(cancel_futures=True)
+
+
+def _progress(track: dict, result: dict) -> tuple[dict, dict]:
+    print(f"  {track['id']:<18} {result['path']:<9} {result['seconds']:7.1f} s", flush=True)
+    return track, result
 
 
 def cache_path(engine: str, track: dict, fingerprint: str) -> Path:

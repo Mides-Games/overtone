@@ -60,6 +60,10 @@
    "where": "python-only",
    "why": "bench/diagnose.py reads stage reports offline; it is a measurement tool, not an engine stage"
   },
+  "KilledAnalysisTests": {
+   "where": "python-only",
+   "why": "bench/corpus_b.py runs each analysis in a worker so a killed one ends its song, not the run; a measurement tool, not an engine stage"
+  },
   "RunRetentionTests": {
    "where": "python-only",
    "why": "python/overtone_runs.py prunes the measurement server's old caches and replay bundles; server housekeeping, not an engine stage"
