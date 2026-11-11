@@ -64,8 +64,25 @@ The replay's own baseline sits 0.2 and 0.5 points above the server's run of the 
 code on anime-single (83.1 and 79.0 %): one and one song whose replayed lines differ
 from the run's. The doubling has no held-out case, for or against: its three songs
 (two fixed; the third, *Killer Headache*, doubles to the map's tempo and still
-misses) are all dev. anime-variable is not measured: it has no dev run on the server.
-Not yet run on the server itself.
+misses) are all dev.
+
+On the server itself (master e1995d8, its runs of 2026-11-11 13:40), songs rankable:
+anime-single 84.2 % dev and 80.5 % held out, against 83.1 and 79.0 % for e9e90d5's
+runs; bands-variable 50.0 and 53.7 %, from 49.2 and 53.7 %. Each is what the replay
+gave or within one song of it.
+
+anime-variable is measured for the first time (its dev run finishes now that a killed
+song no longer takes the run with it; one dev song dies at the memory cap and counts
+as missed): on 9699d63, before this change, 24.9 % of 289 dev songs and 27.1 % of 118
+held out; on e1995d8 25.3 % and 27.1 %, as replayed. Two ranked maps of the same audio
+agree with each other on 43.8 % there (16 pairs). Of the 141 dev songs the core answers and
+misses, 66 miss on under a tenth of their beats: 23 only in the intro, 14 only at the
+end, and 7 have every map beat on the engine's grid but a stretch the map writes at
+half the BPM.
+
+The server's gates fail on real-audio alone, as they have since 2026-11-09: Palette
+179.9703 → 180.0, its map's BPM (see that day's one-line-phase entry). The server's
+snapshot is not re-pinned.
 
 Where the songs that still miss are lost (dev, songs): anime-single 41 of 74 on a
 constant offset with the grid locked, 12 on octave or tempo, 6 on lines, 15 that v3
@@ -108,6 +125,13 @@ offset.
   within 5 ms on two (*Rock, Scissors, Paper* 513 → 258 of 1 030 over), with no
   verdict changed on any stage: what those songs miss on is a BPM a few hundredths
   off, the item above.
+- **A pickup line on the first strong attack** when it sits off the first line's grid,
+  the grid resuming on its next beat (simulated on the server's bundles; the attack
+  taken at 0.5 to 1.0 of the median weight of the attacks on the grid, off it by a
+  tenth or a fifth of a beat). Of anime-variable's 23 intro-only misses, the mappers
+  put such a line on some, but not as a rule: dev 2 songs fixed and 6 to 9 broken, held
+  out 0 fixed and 1 to 3 broken; anime-single dev 0 fixed and 27 to 60 broken, held
+  out 7 to 17 broken.
 
 ---
 
@@ -284,6 +308,11 @@ version of this entry said "unchanged", which only meant nothing ran.
 The measure-grid fix alone, at the run's lead: bands dev 15 maps fixed, 0 broken;
 anime-single dev 29 fixed, 5 broken (one song, 10 ms of phase), held out 12 fixed, 0
 broken.
+
+The server's real-audio gate has failed on one track since this change (noticed
+2026-11-11, every gates run from fb61896 on): Palette's global BPM 179.9703 → 180.0.
+180 is its map's BPM, and the reading it was re-pinned to on 2026-10-23; the
+server's snapshot is not re-pinned here, which is the owner's call.
 
 ### Rejected / tried and dropped
 
