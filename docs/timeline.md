@@ -20,6 +20,58 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-12 · What the attacks can still give: an oracle on the map's own lines
+
+No engine change. Before working inside the Rust core, its ceiling was measured on
+the server's bundles of 2026-11-11 (e1995d8; the conventions have not changed
+since), which keep the core's attacks for every audio, the ones it refuses too.
+
+### Measured
+
+**An oracle that is given the map's timing.** Each map line keeps its BPM and its
+place; only its phase is taken from the attacks inside it (their weighted phase on
+the line's quarter-beat grid, the quarter nearest the map given away). It stands for
+a core that finds every tempo and every cut and reads the phase from the attacks.
+Songs rankable, today against the oracle; B also keeps the map's own phase on a line
+with under 12 attacks:
+
+| stage | split | songs | today | oracle | oracle B |
+|---|---|---|---|---|---|
+| anime-single | dev | 473 | 399 | 419 | 419 |
+| anime-single | held out | 199 | 161 | 163 | 163 |
+| bands-variable | dev | 121 | 61 | 70 | 76 |
+| bands-variable | held out | 41 | 22 | 24 | 25 |
+| anime-variable | dev | 287 | 73 | 93 | 108 |
+| anime-variable | held out | 118 | 32 | 30 | 43 |
+
+Held out, knowing every tempo and cut is worth two songs on anime-single, two on
+bands and none on anime-variable. What separates B from the oracle are lines of one
+to three beats (a pickup, a bar written at another BPM, a closing ritardando), whose
+phase the attacks do not hold. Songs mapped with 11 lines or more: 1 of 146 passes
+today and 1 with the oracle. The phase estimate is a simple one; a better one would
+raise these, by how much is not measured.
+
+**Where the core's own misses sit.** Each failing map beat put on its map line, the
+songs whose failing beats all share one kind: on anime-single 51 of 60 dev songs
+and 28 of 31 held out miss on the phase of one long line at the right BPM, the
+mappers' own spread (two ranked maps of one audio agree within 10 ms on 86.4 % of 22
+dev pairs; the engine is at 84.4 %). On anime-variable 81 of 141 dev songs have
+failing beats of several kinds at once.
+
+### Rejected / tried and dropped
+
+- **One line on the middle of the range its windows' phases span** (the attacks'
+  weighted distance to the grid over windows of 32 beats; moved when the range is
+  8 to 30 ms), for the songs whose map re-syncs the same BPM by 10-20 ms part way:
+  643 one-line songs touched, 6 fixed and 8 broken. A window's phase wanders
+  about 5 ms on its own (*Super Driver*, whose map steps 12 ms at 48 s, drifts
+  from +5 to -5 with no step to be seen).
+- **A phase step written as a second line** (the split of those windows into two
+  levels, each side steady, the step 8 to 30 ms and better than a ramp): 24 songs
+  touched, none fixed, 4 broken.
+
+---
+
 ## Unreleased — 2026-11-12 · The server's real-audio snapshot re-pinned from the runs
 
 ### Changed
@@ -45,6 +97,11 @@ version is `v1.0.0-stable` (2026-10-28).
 
 Not measured: no engine change. 704 Python tests pass; the server's gates are run
 again after the re-pin.
+
+After it (master b6af9d1, 2026-11-12): real-audio 6 of 6 as pinned, and the
+server's run of every gate passes 15 of 15, the first since 2026-11-09. Its stage
+runs on that commit give what e1995d8's gave: anime-single dev 84.4 % of 474 songs
+rankable, bands-variable dev 50.0 % of 122, anime-variable dev 25.3 % of 289.
 
 ---
 
@@ -174,6 +231,31 @@ offset.
   engine at twice every map's tempo (anime-single 9, bands 3, anime-variable 11),
   no BPM floor leaves more of them than songs that pass. At 220 BPM or more there
   are 10 against 32 that pass.
+- **The octave from the engine's tempo and Beat This! together** (counted
+  2026-11-12 on the same bundles, the two rejected above taken as one rule): 106
+  songs the core answers have the network within 4 % of half the engine's tempo.
+  Under 210 BPM the maps side with the engine in 85 of 91. At 210 or more, where
+  the misses read at double sit, dev has 13: six mapped at the network's half, six
+  at the engine's tempo (five of them pass today) and one at both; held out has
+  two, neither at the half. Neither the off-beat ratio (0.22-0.52 for the six at
+  half, 0.09-1.10 for the six at the engine's) nor the octave margin or the
+  stability separates them.
+- **v3's runs of trembling lines written as one line** (simulated 2026-11-12 from
+  the reports' lines alone: consecutive lines within 4 % of their run's median,
+  eight or more over 20 s or more, refitted on the grid their beats agree on).
+  When v3 answers with 11 lines or more it passes on no song of any stage (0 of
+  65, dev and held out; 25 of them mapped with ten lines or fewer: *Anthem*, 191
+  lines a few BPM either side of 220 for a map at 220). Merged, 51 songs change, none
+  becomes rankable and none stops; 25 have fewer beats over 5 ms (*Manten* 1 251 →
+  175 of 1 992, *Foul Play ni Kurari* 350 → 17 of 490). The same at 2, 6 and 8 %.
+  Refitted on the attacks instead (the bundles keep the core's attacks for the
+  songs it refuses; BPM within 1.5 % of the run's by the attacks' coherence on the
+  beat, the half and the quarter, whole or .5 where that is as good): 52 songs
+  change, none becomes rankable and none stops, 35 have fewer beats over 5 ms. The
+  fit itself holds: of 659 one-line songs that pass, 595 still pass on the line
+  refitted from their attacks alone. What these songs miss on is not the
+  trembling: the lines left outside the runs, the octave (29 of the 52) and maps
+  timed with tens of lines.
 
 What anime-variable's dev songs miss on, beyond the near misses above: among the
 songs the core answers at the map's tempo over 90 % of their length, a map's
