@@ -319,6 +319,21 @@ class MeasurementRunTests(unittest.TestCase):
         self.assertEqual((argv, settings["gates"]), (["real-audio-pin"], ["real-audio-pin"]))
         self.assertEqual(self.runs.PINS["real-audio-pin"][-1], "--update")
 
+    def test_the_real_audio_snapshot_lives_in_the_runs_folder(self):
+        from unittest import mock
+        seed = self.tmp / "bench"
+        seed.mkdir()
+        (seed / "real_audio_snapshot.local.json").write_text('{"tracks": {}}', encoding="utf-8")
+        runs = self.tmp / "runs-pin"
+        runs.mkdir()
+        with mock.patch.object(self.runs, "BENCH", seed):
+            path = self.runs.real_snapshot(runs)
+            self.assertEqual(path, runs / "real_audio_snapshot.local.json")
+            self.assertEqual(path.read_text(encoding="utf-8"), '{"tracks": {}}')   # seeded once
+            path.write_text('{"tracks": {"a": 1}}', encoding="utf-8")
+            self.assertEqual(self.runs.real_snapshot(runs).read_text(encoding="utf-8"),
+                             '{"tracks": {"a": 1}}')                              # then its own
+
     def test_a_gates_run_reports_each_gate(self):
         import time
         store = self.runs.RunStore(self.tmp / "runs")

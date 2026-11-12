@@ -25,16 +25,25 @@ version is `v1.0.0-stable` (2026-10-28).
 ### Changed
 
 - `bench/remote.py gates real-audio-pin` re-pins the server's own real-audio snapshot
-  (`overtone_runs.PINS`): `bench/gates.py real-audio --update` as the service's user,
-  which owns that file. It runs only when named, never in a run of every gate. The
-  committed baselines are still re-pinned in a commit.
+  (`overtone_runs.PINS`): `bench/gates.py real-audio --update`, run as the service.
+  It runs only when named, never in a run of every gate. The committed baselines are
+  still re-pinned in a commit.
+- The server's runs read and write that snapshot in their runs folder
+  (`OVERTONE_REAL_SNAPSHOT`, set by `overtone_runs.real_snapshot`, seeded from the
+  checkout's copy the first time).
+
+### Fixed
+
+- The first re-pin failed on the server: the service sees its checkout read-only
+  (`ProtectSystem=strict`), so `bench/real_audio_snapshot.local.json` could not be
+  written there. The snapshot moved to the runs folder, which the service may write.
 - Used once, by the owner's decision: Palette's reading moved 179.9703 → 180.0 with
   the one-line phase (2026-11-09), its map's BPM, and the server's gates have been red
   on it since.
 
 ### Measured
 
-Not measured: no engine change. 703 Python tests pass; the server's gates are run
+Not measured: no engine change. 704 Python tests pass; the server's gates are run
 again after the re-pin.
 
 ---

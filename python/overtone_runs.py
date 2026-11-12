@@ -62,10 +62,10 @@ GATES = {
     "fuzz-reader": ["bench/fuzz_reader.py"],
 }
 #: Re-pins that run only when named, never in "all": the server's own
-#: real-audio snapshot (bench/real_audio_snapshot.local.json, never committed)
-#: is the service user's, so the owner re-pins it from here once a change of
-#: reading is explained in docs/timeline.md (2026-11-12, Palette 179.9703 ->
-#: 180.0, its map's BPM). The committed baselines are re-pinned in a commit.
+#: real-audio snapshot (never committed) is re-pinned from here once a change
+#: of reading is explained in docs/timeline.md (2026-11-12, Palette 179.9703 ->
+#: 180.0, its map's BPM). It lives in the runs folder (``real_snapshot``): the
+#: service sees its checkout read-only. Committed baselines change in a commit.
 PINS = {
     "real-audio-pin": ["bench/gates.py", "real-audio", "--update"],
 }
@@ -359,6 +359,16 @@ def prune_replays(root: Path, keep: int = REPLAY_KEEP_RUNS) -> int:
     return freed
 
 
+def real_snapshot(runs: Path) -> Path:
+    """The server's real-audio snapshot, in its runs folder, which the service
+    may write; seeded from the checkout's copy the first time there is one."""
+    path = Path(runs) / "real_audio_snapshot.local.json"
+    seed = BENCH / "real_audio_snapshot.local.json"
+    if not path.exists() and seed.is_file():
+        path.write_bytes(seed.read_bytes())
+    return path
+
+
 class RunStore:
     """Runs on disk, one folder each: meta.json, log.txt and, once the tool
     wrote it, result.json. Plain files, so a run outlives the server."""
@@ -519,6 +529,7 @@ class RunQueue:
             env["OVERTONE_SONGS"] = self.songs     # the bench's Songs folder is the server's
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONDONTWRITEBYTECODE"] = "1"
+        env["OVERTONE_REAL_SNAPSHOT"] = str(real_snapshot(self.store.root))
         meta.update(state="running", started_at=_now())
         self.store.write(meta)
         started = time.monotonic()
