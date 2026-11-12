@@ -20,6 +20,48 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-12 · Where the notes are lost: a ceiling per kind of stretch
+
+No engine change. With the worst note read past the lead (the entry below), the songs
+still not playable were asked which stretch keeps each one there. For each kind of
+map line, the engine's lines were given the map's own timing over every line of that
+kind only, its grid resumed on its own phase after each, and the songs that became
+playable counted (server runs of e1995d8, 2026-11-11; dev / held out).
+
+| stage | not playable | intro | outro | lines < 4 s | 4-20 s | long, other BPM | long, same BPM | all |
+|---|---|---|---|---|---|---|---|---|
+| anime-single | 16 / 11 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 5 / 1 | 9 / 8 | 14 / 9 |
+| bands-variable | 51 / 16 | 1 / 0 | 1 / 0 | 5 / 1 | 3 / 0 | 4 / 1 | 5 / 1 | 46 / 13 |
+| anime-variable | 160 / 61 | 8 / 3 | 9 / 5 | 51 / 18 | 14 / 8 | 6 / 3 | 8 / 2 | 153 / 61 |
+
+The intro and the outro, the pickup line among them, hold almost nothing. On
+anime-single what is left is the phase of the one long line (the mappers' spread,
+rejected before as a per-song lead) and a few hundredths of a BPM. On bands, no one
+kind holds more than five songs: each misses on several at once.
+
+The one large group is anime-variable's short lines: 51 dev songs (18 held out)
+would be playable with them alone. Their maps are timed by hand beat by beat:
+*Seven Doors* has 292 lines, *BAKU* 131, *Ark* 105, mostly 0.5 to 2 beats long
+with the BPM wandering about the song's. Of the 468 short lines holding a failing
+note in those dev songs, 452 are mid-song, 304 sit at or within 5 % of the engine's
+BPM, 323 last two beats or less, and after 365 the map's next line is off the
+engine's grid: the mapper moves the phase by hand. The engine's one steady line
+misses one or two notes in each.
+Two ranked maps of one anime-variable audio agree on notes in 50.0 % of 16 pairs
+(playable); the engine's figure is 44.6 % dev and 48.3 % held out.
+
+### Rejected / tried and dropped
+
+- **A short stretch that leaves the tempo and comes back, written as its own line**
+  (a map line under 4 s, 3 % or more off the engine's BPM, between two lines at one
+  BPM): counted with the map's own line put in, the most any rule could do. 70
+  anime-variable and 25 bands songs not playable have such stretches; with every one
+  of them right, 2 anime-variable dev songs become playable and none on bands or
+  held out. They also pass without them more often than not (46 of 80 slow-down
+  stretches and 29 of 68 speed-ups on anime-variable hold every note today).
+
+---
+
 ## Unreleased — 2026-11-12 · The worst note looked up past the mappers' lead
 
 ### Fixed
