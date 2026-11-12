@@ -22,6 +22,7 @@ http://127.0.0.1:8765: an SSH tunnel to it), with the token from
     python bench/remote.py log <id> --grep FAIL            # the whole log, or its matching lines
     python bench/remote.py gates --wait                    # every Python gate, on the server
     python bench/remote.py gates benchmark golden --wait   # some of them
+    python bench/remote.py gates real-audio-pin --wait     # re-pin the server's real-audio snapshot
     python bench/remote.py suite --wait                    # the Python suite (all, engine)
 
 A report holds one row per map with its folder name, so it stays in
