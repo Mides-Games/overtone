@@ -174,6 +174,25 @@ offset.
   engine at twice every map's tempo (anime-single 9, bands 3, anime-variable 11),
   no BPM floor leaves more of them than songs that pass. At 220 BPM or more there
   are 10 against 32 that pass.
+- **The octave from the engine's tempo and Beat This! together** (counted
+  2026-11-12 on the same bundles, the two rejected above taken as one rule): 106
+  songs the core answers have the network within 4 % of half the engine's tempo.
+  Under 210 BPM the maps side with the engine in 85 of 91. At 210 or more, where
+  the misses read at double sit, dev has 13: six mapped at the network's half, six
+  at the engine's tempo (five of them pass today) and one at both; held out has
+  two, neither at the half. Neither the off-beat ratio (0.22-0.52 for the six at
+  half, 0.09-1.10 for the six at the engine's) nor the octave margin or the
+  stability separates them.
+- **v3's runs of trembling lines written as one line** (simulated 2026-11-12 from
+  the reports' lines alone: consecutive lines within 4 % of their run's median,
+  eight or more over 20 s or more, refitted on the grid their beats agree on).
+  When v3 answers with 11 lines or more it passes on no song of any stage (0 of
+  65, dev and held out; 25 of them mapped with ten lines or fewer: *Anthem*, 191
+  lines a few BPM either side of 220 for a map at 220). Merged, 51 songs change, none
+  becomes rankable and none stops; 25 have fewer beats over 5 ms (*Manten* 1 251 →
+  175 of 1 992, *Foul Play ni Kurari* 350 → 17 of 490). The same at 2, 6 and 8 %.
+  A grid fitted to v3's beats is not near enough; fitted to the attacks it is not
+  measured, since the replay does not carry v3's audios.
 
 What anime-variable's dev songs miss on, beyond the near misses above: among the
 songs the core answers at the map's tempo over 90 % of their length, a map's
