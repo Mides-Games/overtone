@@ -20,6 +20,50 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-12 · The worst note looked up past the mappers' lead
+
+### Fixed
+
+- `bench/rankable.py` read a note against the engine's tick nearest the note itself
+  and took the mappers' lead off afterwards. The lead is about 30 ms, and half a tick
+  is less than that at the fine snaps of a fast song (1/8 from 125 BPM, 1/6 from 167,
+  1/4 from 250), so a note the engine held exactly was read against the tick before
+  its own: 30 ms early became a tick's width off, 35-75 ms. Each tick is now the one
+  nearest the note that lead later (`note_errors(..., lead_ms)`), and the lead is read
+  once more that way (`note_shift`). The worst beat, the ranked pairs and the lead
+  itself (anime-single 30.0, bands 28.0 → 28.5, anime-variable 29.5 → 29.9) barely
+  move; what moves is which songs read as playable.
+
+### Measured
+
+Not an engine change: the same runs scored again (server, e1995d8, 2026-11-11;
+`bench/rankable.py <dev report> <held-out report>`). Songs on notes, before → after.
+466 maps read better and two read worse: two difficulties of one bands dev song
+(*Sleeping With Sirens - If You Can't Hang*) go from rankable at 10.00 ms to
+playable at 10.45, by the lead's half millisecond. No map stops being playable.
+
+| stage | split | rankable (≤ 10 ms) | playable (≤ 20 ms) |
+|---|---|---|---|
+| anime-single | dev (474) | 83.1 → 84.8 % | 94.5 → 96.6 % |
+| anime-single | held out (200) | 77.0 → 80.0 % | 90.5 → 94.5 % |
+| bands-variable | dev (122) | 47.5 → 48.4 % | 54.9 → 58.2 % |
+| bands-variable | held out (41) | 48.8 → 51.2 % | 58.5 → 61.0 % |
+| anime-variable | dev (289) | 33.6 → 34.6 % | 43.3 → 44.6 % |
+| anime-variable | held out (118) | 33.1 → 33.9 % | 46.6 → 48.3 % |
+
+The maps it frees are one-line songs from 120 to 280 BPM whose failing notes all sat
+on 1/4, 1/6, 1/8 or 1/16 at -25 to -78 ms, one tick less the lead (*LiSA - crossing
+field*, 101 of 854 notes at -70; *DJ Sharpnel - Gate Openerz*, 485 of 1 835 at -52).
+
+Where the notes are still lost (dev, songs not playable): anime-single 16 of 474,
+7 of them with every failing note on one long line at the map's BPM (a constant
+20-30 ms past the lead, or a drift of a few hundredths of a BPM); bands-variable 51
+of 122 and anime-variable 160 of 289, of which 5 and 5 are of that kind and the
+rest have failing notes of several kinds at once (a missed change, a line at
+another tempo, a short line the map writes by hand).
+
+---
+
 ## Unreleased — 2026-11-12 · What the attacks can still give: an oracle on the map's own lines
 
 No engine change. Before working inside the Rust core, its ceiling was measured on
