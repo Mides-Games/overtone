@@ -46,6 +46,11 @@ version is `v1.0.0-stable` (2026-10-28).
 Not measured: no engine change. 704 Python tests pass; the server's gates are run
 again after the re-pin.
 
+After it (master b6af9d1, 2026-11-12): real-audio 6 of 6 as pinned, and the
+server's run of every gate passes 15 of 15, the first since 2026-11-09. Its stage
+runs on that commit give what e1995d8's gave: anime-single dev 84.4 % of 474 songs
+rankable, bands-variable dev 50.0 % of 122, anime-variable dev 25.3 % of 289.
+
 ---
 
 ## Unreleased — 2026-11-11 · A song read at 2/3 or at half of its tempo; merged lines at the tempo the song holds
