@@ -61,6 +61,14 @@ GATES = {
     "facts": ["bench/facts.py"],
     "fuzz-reader": ["bench/fuzz_reader.py"],
 }
+#: Re-pins that run only when named, never in "all": the server's own
+#: real-audio snapshot (bench/real_audio_snapshot.local.json, never committed)
+#: is the service user's, so the owner re-pins it from here once a change of
+#: reading is explained in docs/timeline.md (2026-11-12, Palette 179.9703 ->
+#: 180.0, its map's BPM). The committed baselines are re-pinned in a commit.
+PINS = {
+    "real-audio-pin": ["bench/gates.py", "real-audio", "--update"],
+}
 #: The Python suite, each test named in the log: a run cut short shows which
 #: test it was in. "all" runs every module here, each its own process: two
 #: modules in one process once added up past the server's 3 GB cap. Since the
@@ -209,9 +217,9 @@ def build_args(request: dict, db_path: str | os.PathLike[str],
     if tool == "gates":
         only = request.get("only") or []
         if (not isinstance(only, list) or not all(isinstance(g, str) for g in only)
-                or any(g not in GATES for g in only)):
-            raise ValueError(f"only is a list of gates: {', '.join(GATES)}.")
-        names = [g for g in GATES if g in only] or list(GATES)
+                or any(g not in GATES and g not in PINS for g in only)):
+            raise ValueError(f"only is a list of gates: {', '.join([*GATES, *PINS])}.")
+        names = [g for g in [*GATES, *PINS] if g in only] or list(GATES)
         return tool, names, {"tool": tool, "gates": "all" if not only else names}
     if tool == "suite":
         which = request.get("suite") or "all"
@@ -655,7 +663,7 @@ def _checks(tool: str, names: list[str], result: Path) -> int:
     from the repository root: nothing is adjusted, the Beat This! vote is as
     installed. Every line goes to the log; the report says what passed."""
     if tool == "gates":
-        commands = [(name, [sys.executable, *GATES[name]]) for name in names]
+        commands = [(name, [sys.executable, *{**GATES, **PINS}[name]]) for name in names]
     else:
         parts = list(SUITES) if names[0] == "all" else names
         commands = [(part, [sys.executable, *SUITES[part]]) for part in parts]

@@ -312,6 +312,13 @@ class MeasurementRunTests(unittest.TestCase):
         for command in self.runs.GATES.values():
             self.assertIn(" ".join(command), claude)
 
+    def test_a_re_pin_runs_only_when_named(self):
+        self.assertNotIn("real-audio-pin", self.runs.build_args({"tool": "gates"}, "/db")[1])
+        tool, argv, settings = self.runs.build_args(
+            {"tool": "gates", "only": ["real-audio-pin"]}, "/db")
+        self.assertEqual((argv, settings["gates"]), (["real-audio-pin"], ["real-audio-pin"]))
+        self.assertEqual(self.runs.PINS["real-audio-pin"][-1], "--update")
+
     def test_a_gates_run_reports_each_gate(self):
         import time
         store = self.runs.RunStore(self.tmp / "runs")
