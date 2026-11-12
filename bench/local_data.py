@@ -17,6 +17,7 @@ checkout that had them gets them back, as committed (LF line endings), with::
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -38,7 +39,9 @@ FILES = {
 CORPUS_B = HERE / "corpus_b.local.json"
 HEALTH_SAMPLE = HERE / "health_sample.local.json"
 HEALTH_SHEET = HERE / "health_sample.local.md"
-REAL_SNAPSHOT = HERE / "real_audio_snapshot.local.json"
+#: The real-audio snapshot; OVERTONE_REAL_SNAPSHOT moves it where the process
+#: may write (the measurement server's runs folder: its checkout is read-only).
+REAL_SNAPSHOT = Path(os.environ.get("OVERTONE_REAL_SNAPSHOT") or HERE / "real_audio_snapshot.local.json")
 
 
 def missing(path: Path) -> str:
