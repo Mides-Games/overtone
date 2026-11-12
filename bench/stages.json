@@ -19,6 +19,12 @@
    "order": 3,
    "title": "Live-drummed bands, drifting and changing tempo",
    "where": "lower(artist) IN ('my chemical romance', 'the fall of troy', 'pierce the veil', 'pup', 'dragonforce', 'linkin park', 'bring me the horizon', 'sum 41', 'rise against', 'jeff rosenstock', 'sleeping with sirens', 'system of a down', 'green day', 'paramore', 'avenged sevenfold', 'one ok rock', 'my first story', 'three days grace', 'queen')"
+  },
+  {
+   "id": "groove-single",
+   "order": 4,
+   "title": "Jazz, funk and soul, one tempo",
+   "where": "red_lines = 1 AND NOT (' ' || lower(tags) || ' ' LIKE '% anime %' OR lower(tags) LIKE '%opening%' OR lower(tags) LIKE '%ending%' OR lower(title) LIKE '%tv size%' OR lower(version) LIKE '%tv size%') AND (lower(tags) LIKE '%jazz%' OR lower(tags) LIKE '%funk%' OR lower(tags) LIKE '%swing%' OR lower(tags) LIKE '%bossa%' OR ' ' || lower(tags) || ' ' LIKE '% soul %' OR ' ' || lower(tags) || ' ' LIKE '% fusion %' OR lower(tags) LIKE '%big band%')"
   }
  ]
 }

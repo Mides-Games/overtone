@@ -20,6 +20,44 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-12 · A fourth stage: jazz, funk and soul at one tempo
+
+### Changed
+
+- `bench/stages.json` has `groove-single` (order 4): one red line, jazz, funk, swing,
+  bossa, soul, fusion or big band in the tags, the anime filter of S1 and S2 left out
+  so no song is in two stages. It is run on the server, once deployed, with
+  `bench/remote.py run groove-single --split dev|holdout`.
+
+### Measured
+
+Why this stage. On the three stages the engine stands near what two ranked maps of
+one audio agree on (beats: anime-single 84.4 % against 86.4 % for the pairs; notes:
+anime-variable 44.6 % playable against 50.0 %), and the ceilings of the last entries
+leave little a rule could still move there. Elsewhere in the library it does not.
+The server's cached analyses (`/api/songs`, at most 200 maps per search, one-line
+maps whose audio is analysed, the engine's BPM against the map's within 0.05):
+
+| search | audios | right | octave | other | refused |
+|---|---|---|---|---|---|
+| anime | 36 | 72 % | 3 % | 8 % | 17 % |
+| tv size | 29 | 90 % | 3 % | 0 % | 7 % |
+| jazz | 15 | 53 % | 33 % | 13 % | 0 % |
+| funk | 38 | 66 % | 21 % | 3 % | 11 % |
+| bossa | 13 | 77 % | 15 % | 0 % | 8 % |
+| soul | 24 | 62 % | 12 % | 0 % | 25 % |
+| swing | 13 | 69 % | 8 % | 15 % | 8 % |
+
+A sample, not a measurement: a search stops at 200 maps in the index's order, and it
+reads the library's cached analysis, not the app's conventions. Pop punk (93 %) and
+punk (83 %) read better than anime; alternative (46 %, 43 % refused) and piano (53 %,
+47 % refused) worse but mostly by refusing, which v3 then answers. The octave is the
+one error these genres share and the anime stages do not show, so this stage is cut
+for it. On this machine's library it holds 82 songs and 495 maps of every status (50
+dev, 32 held out); the server's ranked-only part is not known until it runs.
+
+---
+
 ## Unreleased — 2026-11-12 · Where the notes are lost: a ceiling per kind of stretch
 
 No engine change. With the worst note read past the lead (the entry below), the songs
