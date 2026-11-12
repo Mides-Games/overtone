@@ -1192,6 +1192,23 @@ class RankableVerdictTests(unittest.TestCase):
         self.assertAlmostEqual(abs(e[0]), 250.0)
         self.assertAlmostEqual(e[1], 0.0)
 
+    def test_worst_note_finds_a_fine_snap_s_own_tick_past_the_lead(self):
+        from bench.rankable import note_errors, note_shift, note_verdict
+        # 200 BPM: a 1/8 tick is 37.5 ms. The engine's grid sits 30 ms after the
+        # map's, as the mappers' lead puts it; the 1/8 note at 1012.5 is nearer
+        # the engine's tick before its own (7.5 ms early) than its own (30 late).
+        notes = [300 * k for k in range(1, 10)] + [1012.5]
+        m = {"rows": [self.row(0.0, 200.0)], "lines": [[30.0, 200.0]], "notes": notes}
+        self.assertAlmostEqual(note_errors([(0.0, 200.0)], [(30.0, 200.0)], notes)[-1], -7.5)
+        self.assertTrue(np.allclose(note_errors([(0.0, 200.0)], [(30.0, 200.0)], notes, 30.0), 30.0))
+        lead = note_shift([m])
+        self.assertAlmostEqual(lead, 30.0)
+        self.assertEqual(note_verdict(m, lead)["note_verdict"], "rankable")
+        # A note the engine does miss still reads as missed: its line 25 ms later.
+        late = dict(m, lines=[[30.0, 200.0], [3055.0, 200.0]], notes=notes + [3300.0])
+        self.assertEqual(note_verdict(late, lead)["note_verdict"], "miss")
+        self.assertAlmostEqual(note_verdict(late, lead)["note_ms"], 25.0)
+
     def test_a_clipped_beat_before_a_reset_costs_nothing_on_notes(self):
         from bench.rankable import beat_errors, note_errors
         # One timer resets the metronome 165 ms after a beat (half of 330 ms);

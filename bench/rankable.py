@@ -152,9 +152,15 @@ def _line_at(lines: list[tuple[float, float]], t: float) -> tuple[float, float]:
     return lines[max(0, int(np.searchsorted(starts, t + 0.5, side="right")) - 1)]
 
 
-def note_errors(map_lines, engine_lines, notes) -> np.ndarray | None:
+def note_errors(map_lines, engine_lines, notes, lead_ms: float = 0.0) -> np.ndarray | None:
     """Each note's signed distance (ms, positive when the engine is late) to
-    the engine's tick at the note's own snap. None without a grid or notes."""
+    the engine's tick at the note's own snap. None without a grid or notes.
+
+    The tick is the one nearest the note ``lead_ms`` later, where the engine
+    puts it once the mappers' lead is known: a 30 ms lead is over half a 1/8
+    tick from 125 BPM (1/6 from 167), and the nearest tick to the note itself
+    is then the one before its own, a tick's width of error on a note the
+    engine holds exactly (2026-11-12)."""
     map_lines = [(o, b) for o, b in map_lines if b > 0]
     engine_lines = [(o, b) for o, b in engine_lines if b > 0]
     if not map_lines or not engine_lines or not notes:
@@ -166,9 +172,9 @@ def note_errors(map_lines, engine_lines, notes) -> np.ndarray | None:
         phase = (t - offset) / step
         snap = next((d for d in SNAPS if abs(phase * d - round(phase * d)) * step / d <= SNAP_MS),
                     SNAPS[-1])
-        e_offset, e_bpm = _line_at(engine_lines, t)
+        e_offset, e_bpm = _line_at(engine_lines, t + lead_ms)
         tick = 60000.0 / e_bpm / snap
-        out[n] = e_offset + round((t - e_offset) / tick) * tick - t
+        out[n] = e_offset + round((t + lead_ms - e_offset) / tick) * tick - t
     return out
 
 
@@ -177,20 +183,26 @@ def _engine_lines(m: dict) -> list[tuple[float, float]]:
 
 
 def note_shift(maps: list[dict]) -> float | None:
-    """The mappers' lead on notes: the median of the dev maps' median note distances."""
-    medians = []
-    for m in maps:
-        e = note_errors(map_lines_of(m), _engine_lines(m), m.get("notes"))
-        if e is not None:
-            medians.append(float(np.median(e)))
-    return float(np.median(medians)) if medians else None
+    """The mappers' lead on notes: the median of the dev maps' median note
+    distances, read once more with each tick looked up that lead later."""
+    lead = 0.0
+    for _ in range(2):
+        medians = []
+        for m in maps:
+            e = note_errors(map_lines_of(m), _engine_lines(m), m.get("notes"), lead)
+            if e is not None:
+                medians.append(float(np.median(e)))
+        if not medians:
+            return None
+        lead = float(np.median(medians))
+    return lead
 
 
 def note_verdict(m: dict, shift_ms: float | None) -> dict:
     """One map's worst note after the lead: rankable, playable or a miss."""
     if not m.get("notes"):
         return {"note_ms": None, "note_verdict": None}
-    e = None if shift_ms is None else note_errors(map_lines_of(m), _engine_lines(m), m["notes"])
+    e = None if shift_ms is None else note_errors(map_lines_of(m), _engine_lines(m), m["notes"], shift_ms)
     if e is None:
         return {"note_ms": None, "note_verdict": "miss"}
     worst = float(np.max(np.abs(e - shift_ms)))
