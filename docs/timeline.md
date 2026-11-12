@@ -196,8 +196,14 @@ offset.
   lines a few BPM either side of 220 for a map at 220). Merged, 51 songs change, none
   becomes rankable and none stops; 25 have fewer beats over 5 ms (*Manten* 1 251 →
   175 of 1 992, *Foul Play ni Kurari* 350 → 17 of 490). The same at 2, 6 and 8 %.
-  A grid fitted to v3's beats is not near enough; fitted to the attacks it is not
-  measured, since the replay does not carry v3's audios.
+  Refitted on the attacks instead (the bundles keep the core's attacks for the
+  songs it refuses; BPM within 1.5 % of the run's by the attacks' coherence on the
+  beat, the half and the quarter, whole or .5 where that is as good): 52 songs
+  change, none becomes rankable and none stops, 35 have fewer beats over 5 ms. The
+  fit itself holds: of 659 one-line songs that pass, 595 still pass on the line
+  refitted from their attacks alone. What these songs miss on is not the
+  trembling: the lines left outside the runs, the octave (29 of the 52) and maps
+  timed with tens of lines.
 
 What anime-variable's dev songs miss on, beyond the near misses above: among the
 songs the core answers at the map's tempo over 90 % of their length, a map's
