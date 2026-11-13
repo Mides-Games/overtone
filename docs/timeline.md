@@ -20,6 +20,39 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-13 · groove-single's first figures
+
+### Measured
+
+The new stage on the server (master 333f167, 2026-11-13, engine app, ranked maps;
+`bench/rankable.py <dev report> <held-out report>`, lead +30.5 ms fitted on dev):
+
+| split | songs | maps | rankable (beats) | exact | rankable (notes) | playable (notes) |
+|---|---|---|---|---|---|---|
+| dev | 36 | 143 | 69.4 % | 47.2 % | 72.2 % | 91.7 % |
+| held out | 19 | 83 | 52.6 % | 42.1 % | 47.4 % | 78.9 % |
+
+Against anime-single (84.4 / 80.5 % on beats, 96.6 / 94.5 % playable) it is the
+weaker ground the cached analyses pointed to, but smaller than this machine's
+library suggested (55 ranked songs against 82 of every status), and mixed: `funk`
+in the tags also takes drum and bass's neurofunk (*Stonebank - Stronger*,
+*Magnetude - Valhalla*). Misses, songs: dev 11 (9 the Rust core answered, 2 v3),
+held out 9 (all the core); by the maps, octave 17.1 % of dev misses and 41.9 % of
+held out.
+
+The octave misses go both ways, and Beat This! does not tell which: the engine at
+twice the map with the network on the map's tempo in three songs (*6LACK - Switch*
+88.35 read 176.73, *Poppy - Girls In Bikinis* 116 read 232, *3L - Tiny Little
+Adiantum* 93 read 186, where another ranked map of the same audio is at 186), and
+the engine at the network's tempo, half or twice the map's, in four (*Nefertiti*
+140 read 280, *Meikaru* 300 read 150 in two sets, *Lilith* 270 read 135). Seven songs
+are no evidence for a rule, and the one this suggests, following the network where
+it hears half, was counted over the whole corpus and dropped (2026-11-11, maps side
+with the engine in 85 of 91 such songs under 210 BPM). The stage stays as a
+measurement, to count such songs as it grows.
+
+---
+
 ## Unreleased — 2026-11-12 · A fourth stage: jazz, funk and soul at one tempo
 
 ### Changed
