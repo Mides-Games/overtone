@@ -20,6 +20,43 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-13 · What the octave is still worth, on four stages
+
+No engine change. Before working on the core's octave choice
+(`crates/overtone-tempo/src/octave.rs`, `beat_from_atoms`), its ceiling was counted
+on the server's bundles of the four stages (e1995d8 for S1-S3, 333f167 for
+groove-single): songs the Rust core answers with one line, the map's first line
+at twice or half the engine's BPM, and what a perfect octave rule would give (the
+engine's line at the map's octave, on the half grid carrying more of the attacks).
+
+### Measured
+
+| stage | one-line core songs (dev / held out) | map at half the engine | map at twice | rankable with a perfect rule | newly playable on notes |
+|---|---|---|---|---|---|
+| anime-single | 413 / 175 | 6 / 2 | 1 / 1 | +7 / +3 | 1 / 0 |
+| bands-variable | 68 / 23 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| anime-variable | 170 / 75 | 11 / 2 | 0 / 1 | +1 / 0 | 0 / 0 |
+| groove-single | 29 / 17 | 2 / 2 | 1 / 2 | +1 / +2 | 1 / 2 |
+
+The octave is worth 14 songs on beats over every stage and split, and four on
+notes: a map at half the engine's tempo puts its notes on the engine's grid all the
+same, so the note figures do not see that error at all. The six songs the engine
+reads at half are all ones Beat This! reads at the engine's tempo too (*adrenaline!!!*
+twice, *Kakushin*, *Meikaruza* twice, *Lilith*).
+
+### Rejected / tried and dropped
+
+- **Halve where Beat This! hears half and the off-beats are light.** Over the 790
+  songs where the map is at the engine's tempo and the engine at 146 BPM or more (the
+  slowest of the ones mapped at half), the off-beat
+  ratio sits higher (median 0.64) than over the 25 mapped at half (0.43), the one
+  feature of the reports that differs. With the network within 4 % of half the
+  engine's tempo (110 songs), halving below an off-beat ratio of 0.25 to 0.50, at
+  any BPM floor from 0 to 200, fixes 0 to 5 dev songs and breaks 6 to 24 that pass
+  (best: 3 fixed, 8 broken); held out, 0 to 1 fixed and up to 5 broken.
+
+---
+
 ## Unreleased — 2026-11-13 · groove-single's first figures
 
 ### Measured
