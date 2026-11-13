@@ -20,6 +20,40 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-13 · groove-single's misses taken apart; what "octave" means on the variable stages
+
+No engine change. The server's bundles (e1995d8 for S1-S3, 333f167 for
+groove-single), scored with `bench/rankable.py`'s functions.
+
+### Measured
+
+- **groove-single's offset misses are the mappers' spread.** Six songs (dev:
+  *Magnetude - Valhalla*, *Hideki Naganuma - AIN'T NOTHIN' LIKE A FUNKY BEAT*, *Our
+  Stolen Theory - United*; held out: *3L - Tiny Little Adiantum*, *Three Days Grace
+  - Unbreakable Heart*, *sana - Packet Hero*) have the map's BPM to the hundredth and
+  every beat at one constant distance from the map, lock 0.0 ms, but that distance
+  is the lead plus -13.5, -13.0, +18.2, -11.5, +12.2 and -10.4 ms: both ways, so no
+  bias the engine could take off. The rest of its misses: octave 7 (the entry
+  below), one-line maps the engine splits or puts off phase 5, tempo 2.
+- **Where "octave" misses lose their notes, bands-variable and anime-variable.** The
+  cause reads "octave" as soon as one map line is at another octave of the engine's.
+  Of bands' 30 dev songs with that cause, 29 also miss on notes; in 19 of them most
+  failing notes sit on lines where the engine is at the map's own tempo, in 5 where it
+  is at half, in 5 at twice. On anime-variable, 66 dev songs, 14 already playable on
+  notes; of the other 52, 31 lose most notes on lines at the map's tempo, 16 at twice
+  (slow stretches the map writes at half, which the one steady line does not follow),
+  5 at half or a quarter. So an octave rule alone would free few of them.
+
+### Rejected / tried and dropped
+
+- **Merge an engine line at twice or half the previous one's BPM, on its grid, into
+  it** (ratio within 0.5 %, phase within 10 ms; *Otokaze - SaiGetsu* reads 102 then
+  204 from 18.9 s on a one-line map at 102). It touches 2 of the 7 500 maps on the
+  four stages and makes one groove dev song rankable: the engine almost never writes
+  such a line, so there is nothing to merge.
+
+---
+
 ## Unreleased — 2026-11-13 · What the octave is still worth, on four stages
 
 No engine change. Before working on the core's octave choice
