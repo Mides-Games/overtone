@@ -20,6 +20,35 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-14 · What a learned model could win (roadmap 29.9, step 1)
+
+No engine change. Today's missed songs (master 8d1ac38, lead fitted on dev), each by
+its best map, put in the first class that fits: **human** (two ranked sets of the
+audio disagree at least as much as the engine does), **offset** (the grid right up to
+a constant: lock within 10 ms), **octave**, **span** (a multi-line map the core's lines
+do not follow), **refused** (v3 answered), **other**.
+
+### Measured
+
+| stage | split | songs | missed | human | offset | octave | span | refused | other | a model's to win |
+|---|---|---|---|---|---|---|---|---|---|---|
+| anime-single | dev | 474 | 75 | 0 | 44 | 7 | 0 | 15 | 9 | 16 |
+| anime-single | held out | 200 | 39 | 0 | 23 | 3 | 0 | 8 | 5 | 8 |
+| anime-variable | dev | 289 | 216 | 0 | 6 | 36 | 99 | 75 | 0 | 135 |
+| anime-variable | held out | 118 | 86 | 1 | 3 | 15 | 40 | 27 | 0 | 55 |
+| bands-variable | dev | 122 | 61 | 0 | 3 | 13 | 15 | 28 | 2 | 30 |
+| bands-variable | held out | 41 | 19 | 0 | 4 | 3 | 4 | 7 | 1 | 8 |
+
+"A model's to win" counts octave, span and other; the refused songs come on top if a
+model also answers them (29.3 found the attacks cannot). The plan's gate (10 held-out
+songs a stage) passes on anime-variable by far (55) and falls short on anime-single
+(8, its misses are mostly the map's own offset) and bands (8, about as many refused).
+So steps 2-5 aim at the variable-tempo anime songs and are scored there first, with
+anime-single and bands read only for losses. Two ranked sets of one audio rarely
+disagree as much as the engine: the "human" class is 1 song in all.
+
+---
+
 ## Unreleased — 2026-11-14 · A self-check without the map: what the engine's signals can promise (roadmap 29.5)
 
 No engine change. Per song the Rust core answered on the three stages (master
