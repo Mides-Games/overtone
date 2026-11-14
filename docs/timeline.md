@@ -20,6 +20,47 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-14 · Which sound a span's phase follows: no source holds it (roadmap 29.9 closed)
+
+No engine change. Step 3 of docs/20-learned-timing.md, before any model: on the
+server, every anime-variable audio (407) got attacks in three bands (low under 150 Hz
+by librosa's onset detector, mid 150-2 000 Hz and high over 2 000 Hz by the engine's
+own detector) and Beat This!'s beats; only these derived times left the server. Then
+the 29.4 oracle frame: the map's line starts and BPM where the map really changes
+tempo, the core's lines elsewhere, and each changed span's phase taken from one
+source (its constant delay against the map fitted on dev).
+
+### Measured
+
+Songs rankable among those the core answers (anime-variable, master 8d1ac38):
+
+| phase of each changed span | dev (208) | held out (86) |
+|---|---|---|
+| none changed (today) | 67 | 27 |
+| full-mix attacks (the 29.4 reading) | 71 | 30 |
+| low band | 71 | 30 |
+| mid band | 72 | 29 |
+| high band | 73 | 32 |
+| Beat This! | 75 | 29 |
+| the best source per span, chosen by the map | 81 | 34 |
+| the map's own phase | 89 | 37 |
+
+Held-out spans whose phase a source gives within 5 / 10 ms of the map: mix 39 / 67 %,
+low 32 / 53 %, mid 38 / 70 %, high 39 / 70 %, Beat This! 42 / 70 %.
+
+### Rejected / tried and dropped
+
+- **Roadmap 29.9's step 3** (a chooser of the sound the mapper times to): even a
+  perfect chooser that looks at the map gains 4 held-out songs over the full mix,
+  under the plan's gate of 10, so no model trained to choose could pass it. With step
+  2's gate already failed, steps 4-5 were off; 29.9 closes. The phase the mappers
+  write for a changed span is not in any one sound the audio separates into, and two
+  sound sources agree with the map no better than the mix does. Every 29.x idea on
+  the core's lines now ends at that wall; what is left of the variable-tempo misses
+  needs the map's own phase, which only the person timing it supplies.
+
+---
+
 ## Unreleased — 2026-11-14 · How much the library can teach (roadmap 29.9, step 2's gate)
 
 No engine change. Counted on the server's library index and osu!.db, every folder a

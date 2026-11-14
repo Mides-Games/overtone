@@ -86,6 +86,11 @@ there in some band and the attacks' mix hides it.
 must beat "phase from the attacks" by 10 or more held-out songs on anime-variable. If
 it does not, the phase is not in the audio features either, and steps 4 and 5 stop.
 
+**Result (2026-11-14, timeline): fails before any model.** A perfect chooser (the
+best of mix, low, mid, high and Beat This! per span, picked by the map) reaches 34
+held-out songs against the mix's 30 (dev 81 against 71); no single source gains more
+than 2. **29.9 is closed.**
+
 ### 4. Where lines go (the change-point classifier)
 
 Per beat of the core's grid, the probability that a mapper starts a line there and of
