@@ -314,7 +314,26 @@ enlace va dentro de su checkout, que root no toca):
 sudo -u overtone -H sh -c 'mkdir -p /var/lib/overtone/bench-audio && ln -sfn /var/lib/overtone/bench-audio /opt/overtone/bench/audio'
 ```
 
-**Probar otra versión del algoritmo:** en la VPS,
+**Probar una rama antes de mergearla (roadmap 29.8).** Cualquier corrida
+(etapa, `single_bpm`, gates o suite) puede nombrar una rama ya pusheada:
+
+```bash
+python bench/remote.py --token-file token.txt run anime-variable --split dev --engine app --jobs 2 --ref feature/mi-cambio --wait
+```
+
+El actualizador baja todas las ramas a `origin/*` cada 5 minutos; el
+servidor de mediciones no sale a la red: lee ese commit de su propio
+`.git` con `git archive` (sin escribir en el checkout, que para el servicio
+es de solo lectura), lo extrae en `runs/branches/<commit>/`, toma los
+archivos LFS (el modelo de Beat This!) de su propio checkout y corre el tool
+desde ahí. Si la rama cambia `crates/`, `Cargo.toml` o `Cargo.lock`,
+compila su `overtone-cli` con `cargo build --offline` (con las dependencias
+que ya bajaron los builds del servidor; una dependencia nueva hace fallar la
+corrida y lo dice). La corrida guarda la rama (`ref`) y su commit. Se
+conservan las 3 ramas más recientes. Una rama recién pusheada puede tardar
+hasta 5 minutos en estar: antes, la corrida falla con ese aviso.
+
+**Probar otra versión del algoritmo a mano:** en la VPS,
 `sudo -u overtone -H git -C /opt/overtone pull --ff-only && systemctl restart overtone-api`,
 y lanza la corrida. Cada informe guarda el commit que lo produjo, así que dos
 corridas se comparan sabiendo qué código respondió cada una. Las mediciones
@@ -340,7 +359,8 @@ Cada push a `master` (la única rama desde el 2026-10-28) llega solo a la VPS:
 3. Un timer hace lo mismo cada 5 minutos, por si GitHub falla o la VPS
    estaba apagada.
 
-Solo se despliega esa rama: las de trabajo nunca llegan solas. Una VPS que
+Solo se despliega esa rama: las de trabajo nunca llegan solas (se bajan a
+`origin/*` para las corridas con `--ref`, pero nunca se mergean). Una VPS que
 seguía en `experimental` se pasa sola a `master` una vez, si está limpia y
 `master` la contiene (`deploy/overtone-update.sh`). Si dejas
 la VPS en otra rama a mano, el actualizador la deja en paz y lo dice en el

@@ -282,6 +282,71 @@ class MeasurementRunTests(unittest.TestCase):
         self.assertNotEqual(corpus_b.engine_fingerprint("app", Path(__file__)),
                             corpus_b.engine_fingerprint("python", None))
 
+    def test_a_run_may_name_a_fetched_branch_and_measures_that_code(self):
+        import shutil
+        import subprocess
+        if shutil.which("git") is None:
+            self.skipTest("git is not on PATH")
+        _, _, settings = self.runs.build_args({"stage": "anime-single", "ref": "feature/x-1"}, "/db")
+        self.assertEqual(settings["ref"], "feature/x-1")
+        self.assertNotIn("ref", self.runs.build_args({"stage": "anime-single"}, "/db")[2])
+        self.assertEqual(self.runs.build_args({"tool": "suite", "ref": "fix/a"}, "/db")[2]["ref"], "fix/a")
+        for bad in ("-x", "a..b", "x;rm -rf", "x/", "a b", 5, "x.lock"):
+            with self.assertRaises(ValueError, msg=bad):
+                self.runs.build_args({"stage": "anime-single", "ref": bad}, "/db")
+
+        repo = self.tmp / "repo"
+        (repo / "python").mkdir(parents=True)
+        (repo / "assets").mkdir()
+
+        def git(*args: str) -> str:
+            return subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
+                                   "-c", "commit.gpgsign=false", *args],
+                                  check=True, capture_output=True, text=True).stdout.strip()
+
+        git("init", "-q", "-b", "master")
+        pointer = b"version https://git-lfs.github.com/spec/v1\noid sha256:00\nsize 9\n"
+        (repo / "python" / "code.txt").write_text("server", encoding="utf-8")
+        (repo / "assets" / "model.bin").write_bytes(pointer)
+        git("add", "-A")
+        git("commit", "-q", "-m", "server")
+        (repo / "python" / "code.txt").write_text("branch", encoding="utf-8")
+        git("commit", "-q", "-am", "branch")
+        branch = git("rev-parse", "HEAD")
+        git("update-ref", "refs/remotes/origin/feature-x", branch)
+        (repo / "crates").mkdir()
+        (repo / "crates" / "core.rs").write_text("fn main() {}", encoding="utf-8")
+        git("add", "-A")
+        git("commit", "-q", "-m", "rust")
+        rusty = git("rev-parse", "HEAD")
+        git("update-ref", "refs/remotes/origin/rusty", rusty)
+        git("reset", "-q", "--hard", "HEAD~2")        # the server stays on its own commit
+        (repo / "assets" / "model.bin").write_bytes(b"real model")   # what git lfs pull left
+
+        into = self.tmp / "branches"
+        out = self.runs.checkout_ref("feature-x", into, repo=repo, build=lambda *_: self.fail("no build"))
+        self.assertEqual(out["commit"], branch)
+        self.assertEqual((out["dir"] / "python" / "code.txt").read_text(encoding="utf-8"), "branch")
+        self.assertEqual((out["dir"] / "assets" / "model.bin").read_bytes(), b"real model")
+        self.assertEqual(out["cli"], repo / "target" / "release" / self.runs._CLI_NAME)
+
+        builds = []
+
+        def build(source, target_dir):
+            builds.append(source)
+            binary = target_dir / "release" / self.runs._CLI_NAME
+            binary.parent.mkdir(parents=True, exist_ok=True)
+            binary.write_bytes(b"cli")
+            return binary
+
+        for _ in range(2):    # the second asks for no build: the binary is kept
+            out = self.runs.checkout_ref("rusty", into, repo=repo, build=build)
+        self.assertEqual(len(builds), 1)
+        self.assertEqual(out["cli"], out["dir"] / self.runs._CLI_NAME)
+        self.assertEqual(out["cli"].read_bytes(), b"cli")
+        with self.assertRaises(ValueError):
+            self.runs.checkout_ref("never-fetched", into, repo=repo)
+
     def test_an_experiment_is_named_and_switches_its_flags_in_the_run_only(self):
         _, _, settings = self.runs.build_args(
             {"stage": "anime-single", "engine": "app", "experiment": "local-fold-judge"}, "/db")

@@ -34,6 +34,9 @@ main() {
     # The archives of rewritten history (refs/tags/history/*): what tells a
     # published commit master dropped from one made on this server.
     git fetch --quiet origin "+refs/tags/history/*:refs/tags/history/*" 2>/dev/null || true
+    # Every branch, for runs that measure one before it is merged (roadmap
+    # 29.8): the measurement server reads them from here and never fetches.
+    git fetch --quiet --prune origin "+refs/heads/*:refs/remotes/origin/*" 2>/dev/null || true
     old=$(git rev-parse HEAD)
     new=$(git rev-parse "origin/$BRANCH")
     [ "$old" = "$new" ] && return 0
