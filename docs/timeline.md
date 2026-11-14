@@ -20,6 +20,27 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-14 · How much the library can teach (roadmap 29.9, step 2's gate)
+
+No engine change. Counted on the server's library index and osu!.db, every folder a
+scored stage or locked manifest reads left out.
+
+### Measured
+
+- 19 574 ranked, approved or loved maps; 7 517 in scored folders; 12 057 outside, over
+  2 287 audios (grouped by content hash).
+- 3 707 of them have two or more red lines: 18 210 changed spans (one map per set; a
+  tempo change over 0.2 % or a phase restart over 3 ms) in 657 audios.
+- 106 audios have two or more ranked sets; every set agrees within 5 ms and 0.05 %
+  on 1 079 spans.
+
+The plan's gate asked for 3 000 agreeing spans: it fails. Steps 4 (the change-point
+classifier) and 5 (a Beat This! fine-tune) are off; step 3, choosing which sound a
+span's phase follows, goes ahead with the 1 079 agreeing spans as its test set and the
+single-mapper spans for training only (docs/20-learned-timing.md).
+
+---
+
 ## Unreleased — 2026-11-14 · What a learned model could win (roadmap 29.9, step 1)
 
 No engine change. Today's missed songs (master 8d1ac38, lead fitted on dev), each by
