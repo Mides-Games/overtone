@@ -20,6 +20,42 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-13 · Per-segment grids for the refused songs: the ceiling is below v3 (roadmap 29.3)
+
+No engine change. Simulated on the server's replay bundles of 8d1ac38: the songs the
+Rust core refuses (all `no_coherent_pulse`) keep their attacks, so each idea below
+replaced v3's lines on those audios only and was scored with `bench/rankable.py`
+against the same maps (lead fitted on all dev maps).
+
+### Measured
+
+Ceilings first, with the map's own help, songs rankable among the refused ones:
+
+| fit | anime-variable dev | held out | bands-variable dev | held out |
+|---|---|---|---|---|
+| v3, today | 6 / 80 | 5 / 32 | 9 / 36 | 5 / 12 |
+| map's line starts, each segment's BPM (±2 %) and offset from the attacks | 1 | 2 | 5 | 2 |
+| map's line starts and BPM, only the offset from the attacks | 1 | 3 | 8 | 3 |
+
+Even given where every line starts and its tempo, the attacks put about half the
+beats (median per map 44-59 %) within 10 ms of the map, and the worst beat a median
+of 18-164 ms off. A segmenter that must also find the boundaries and tempi can only
+do worse; the first one tried (a dynamic-programming beat track on the attacks with
+v3's tempo as prior, cut wherever a line stopped holding the beats within 6 ms) made
+84-90 lines a song and no refused song rankable (6 → 0 and 5 → 0 on anime-variable).
+The attack fits sat 7.8 ms early against the engine's lines (the attack-rise lead the
+core adds); the ceilings above include that correction.
+
+### Rejected / tried and dropped
+
+- **Roadmap 29.3 as written** (segment a refused song on the attacks' phase, a
+  precision grid per segment): what these songs lack is not the segmentation but a
+  pulse the attacks hold to 10 ms, the reason the core refuses them. v3's tracker
+  stays their fallback; the open routes are a learned detector (29.9) and maps' notes
+  rather than attacks as the evidence.
+
+---
+
 ## Unreleased — 2026-11-13 · Why the Rust core refuses, by stage (roadmap 29.2)
 
 No engine change. The map rows' `rust_said` and `rust_refusal` (29.2) counted per
