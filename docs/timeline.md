@@ -20,6 +20,32 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-13 · Why the Rust core refuses, by stage (roadmap 29.2)
+
+No engine change. The map rows' `rust_said` and `rust_refusal` (29.2) counted per
+audio on the server's master runs of 8d1ac38 (2026-11-13, engine app, ranked maps).
+
+### Measured
+
+| stage | split | audios | core answered | refused: no coherent pulse | core could not decode |
+|---|---|---|---|---|---|
+| anime-single | dev | 474 | 417 (88.0 %) | 56 (11.8 %) | 1 |
+| anime-single | held out | 200 | 175 (87.5 %) | 25 (12.5 %) | 0 |
+| anime-variable | dev | 289 | 208 (72.0 %) | 80 (27.7 %) | 1 |
+| anime-variable | held out | 118 | 86 (72.9 %) | 32 (27.1 %) | 0 |
+| bands-variable | dev | 122 | 85 (69.7 %) | 36 (29.5 %) | 1 |
+| bands-variable | held out | 41 | 29 (70.7 %) | 12 (29.3 %) | 0 |
+
+Every refusal is the one kind, `no_coherent_pulse`: no other diagnostic appears on any
+stage. On the variable stages the refused songs are the ones mapped with many lines
+(median red lines per map: anime-variable 13 / 6 refused against 4 / 4 answered,
+bands 5 / 9 against 1 / 1), which agrees with the 2026-11-11 finding that lifting the
+pulse floor does not rescue them. So 29.3 targets that one kind, on songs whose maps
+change tempo; on anime-single the refused songs are one-line maps like the answered
+ones. Three audios per run fail to decode in the core and fall to v3.
+
+---
+
 ## Unreleased — 2026-11-13 · groove-single's misses taken apart; what "octave" means on the variable stages
 
 No engine change. The server's bundles (e1995d8 for S1-S3, 333f167 for
