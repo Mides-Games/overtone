@@ -65,6 +65,16 @@ two stages for losses only.
 **Gate**: at least 3 000 agreeing changed spans. With fewer, a learned per-span model
 is noise; stop at step 3's classifier.
 
+**Count (2026-11-14, the server's library)**: 19 574 ranked, approved or loved maps;
+7 517 sit in a folder some scored stage or locked manifest reads and are left out;
+12 057 remain, over 2 287 audios (grouped by content hash). 3 707 of those maps have
+two or more red lines, and one map per set gives 18 210 changed spans (a tempo change
+over 0.2 % or a phase restart over 3 ms) in 657 audios. Only 106 audios have two or
+more ranked sets, and every set agrees (5 ms, 0.05 %) on **1 079** spans. The gate
+fails: steps 4 and 5 are off. Step 3 goes ahead with the agreeing spans as its test
+set and the single-mapper spans, which carry the mappers' own spread, for training
+only.
+
 ### 3. Which sound the mapper times to (the cheapest model, CPU)
 
 Per span, a small gradient-boosted model (or logistic) choosing the phase among a few
