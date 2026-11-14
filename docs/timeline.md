@@ -20,6 +20,37 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-14 · What Beat This! in Rust could save (roadmap 29.10)
+
+No engine change. Before porting, Beat This!'s call was split by stage on this
+machine, on the 360 s `long-6min` fixture (one run, Python 3.14, ONNX Runtime CPU).
+
+### Measured
+
+| step | seconds |
+|---|---|
+| decode (the engine's own, shared with the core) | 0.17 |
+| ONNX session load (once a process) | 2.40 |
+| resample to 22 050 Hz | 0.13 |
+| mel spectrogram | 0.56 |
+| the network (ONNX Runtime) | 21.39 |
+
+The network is 95 % of the per-song time. A port through `ort` calls the same ONNX
+Runtime with the same model, so it can save the resample and the spectrogram and the
+second decode the roadmap names, 0.9 s of 22.3 (about 4 %), plus the session load
+where a process analyses one song. The server's perf gate agrees (beatthis 7.0 of 8.1
+s on `edm-174`, 32.0 of 37.7 s on `long-6min`).
+
+### Rejected / tried and dropped
+
+- **Roadmap 29.10 now**: a native ONNX Runtime dependency in the Rust build (`ort`
+  fetches its binaries at build time, against the server's offline builds) for at
+  most 4 % of the stage. The time is in the network; the levers that move it are the
+  model's own (the int8 model and `small0` that docs/17 §7 left to measure), which
+  need no port.
+
+---
+
 ## Unreleased — 2026-11-14 · The server measures a branch before it is merged (roadmap 29.8)
 
 ### Changed
