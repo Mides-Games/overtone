@@ -20,6 +20,42 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-14 · Change points on the beat: the ceiling the attacks allow (roadmap 29.4)
+
+No engine change. Oracles on the server's replay bundles of 8d1ac38, songs the Rust
+core answers, the core's lines kept and only the named spans edited (map times moved
+by the dev lead first); songs rankable.
+
+### Measured
+
+| edit, at the map's own line starts | anime-variable dev | held out | bands-variable dev | held out |
+|---|---|---|---|---|
+| none (today) | 67 / 208 | 27 / 86 | 52 / 85 | 17 / 29 |
+| same BPM, grid restarted at the map's phase | 71 | 31 | 53 | 17 |
+| a real tempo change (not an octave), the map's own line | 103 | 41 | 57 | 18 |
+| both | 120 | 49 | 58 | 18 |
+| the changed spans fitted from the attacks (BPM ±2 % and phase) | 67 | 29 | | |
+| the map's BPM, only the phase from the attacks | 69 | 29 | | |
+| the map's phase, only the BPM from the attacks | 67 | 30 | | |
+
+A perfect change-point detector that also knew each span's line would be worth 36
+dev and 14 held-out anime-variable songs, but the line is the part the attacks
+cannot give: with the map's own boundaries handed over, fitting those spans from the
+attacks adds 0-2 dev songs and 2-3 held out. The mappers' BPM to the hundredth and
+their phase are what the 10 ms bar needs, and over a span of a few seconds to a
+minute the attacks hold neither that closely. bands-variable has little to gain at
+all (+6 / +1 with the map's lines).
+
+### Rejected / tried and dropped
+
+- **Roadmap 29.4 as written** (cut where the phase error ramps, a grid per side): its
+  ceiling with perfect cuts is about two songs a split, below what one false cut
+  costs (the pickup-line test of 2026-11-11 broke 6 to 60 songs a split). The same
+  oracles say where the gain is: an exact BPM and phase per changed span, which a
+  learned model on the hand-timed maps (29.9) would have to supply.
+
+---
+
 ## Unreleased — 2026-11-13 · Per-segment grids for the refused songs: the ceiling is below v3 (roadmap 29.3)
 
 No engine change. Simulated on the server's replay bundles of 8d1ac38: the songs the
