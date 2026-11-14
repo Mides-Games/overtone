@@ -20,6 +20,40 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-14 · A self-check without the map: what the engine's signals can promise (roadmap 29.5)
+
+No engine change. Per song the Rust core answered on the three stages (master
+8d1ac38, 1 244 audios, 1 228 answered by the core), features the engine has without
+a map: its own residual, stability, octave margin and off-beat ratio, the number of
+lines, and from the attacks kept in the replay bundles the 90th percentile of the
+strong attacks' (top 30 % by weight) distance to the grid's beats, halves and
+quarters, the share within 10 ms, and the share of 16-tick windows whose attacks sit
+over 10 ms off. Labels from the maps: rankable (any map within 10 ms after the lead)
+and locked (the grid right up to a constant offset).
+
+### Measured
+
+| target | base rate (dev / held out) | best threshold rule, dev → held out | logistic on all features, top 10 % | top 25 % |
+|---|---|---|---|---|
+| rankable | 67.0 / 64.8 % | none reaches 95 % with 10 songs | 84.5 % dev, 85.2 % held out | 82.0 / 81.5 % |
+| locked | 73.8 / 73.8 % | 4.1 % of songs at 97.2 % → 4.7 % at 94.1 % | 91.5 / 90.9 % | 88.8 / 83.1 % |
+
+Each feature leans the right way and none separates: the strong attacks' 90th
+percentile to the quarter grid is 21.8 ms on rankable songs against 24.8 ms on the
+rest (medians), the bad-window share 0.36 against 0.49, the residual 12.5 against
+16.0 ms. Half of the one-tempo misses are the map's own offset (the 2026-11-11
+count), which no audio feature can see, and the engine's sure songs are not much
+surer than the rest.
+
+### Rejected / tried and dropped
+
+- **Roadmap 29.5's verdict at ≥95 % precision**: the best rule covers 4.7 % of
+  held-out songs at 94.1 % locked, and a learned combination never passes 92 %.
+  A verdict promising that much would be wrong one time in ten. The features stay
+  in the reports for 29.9, where a model trained on the hand-timed maps can use them.
+
+---
+
 ## Unreleased — 2026-11-14 · Change points on the beat: the ceiling the attacks allow (roadmap 29.4)
 
 No engine change. Oracles on the server's replay bundles of 8d1ac38, songs the Rust
