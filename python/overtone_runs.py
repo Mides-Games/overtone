@@ -195,9 +195,122 @@ def git_commit(root: Path = ROOT) -> str | None:
     return None
 
 
+#: A branch a run may name (roadmap 29.8): a plain branch name, never an
+#: option, a range or a path out of refs/remotes/origin.
+_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$")
+#: Branch checkouts the runs folder keeps, newest first.
+BRANCH_KEEP = 3
+#: Paths whose change between the server's commit and a branch's means the
+#: branch needs its own overtone-cli.
+_RUST_PATHS = ("crates", "Cargo.toml", "Cargo.lock")
+_LFS_POINTER = b"version https://git-lfs.github.com/spec/"
+_CLI_NAME = "overtone-cli.exe" if os.name == "nt" else "overtone-cli"
+
+
 def build_args(request: dict, db_path: str | os.PathLike[str],
                songs: str | os.PathLike[str] = "",
                osu_db: str | os.PathLike[str] = "") -> tuple[str, list[str], dict]:
+    """A run request as the tool's own command line, or ValueError. Any tool
+    may name ``ref``, a branch the server's updater has fetched: the run then
+    measures that branch's code instead of the server's own (29.8)."""
+    if not isinstance(request, dict):
+        raise ValueError("A run is a JSON object.")
+    ref = request.get("ref") or ""
+    if ref and (not isinstance(ref, str) or not _REF.fullmatch(ref) or ".." in ref
+                or ref.endswith((".lock", "/", "."))):
+        raise ValueError("ref is a branch name: letters, digits, '.', '_', '-' and '/'.")
+    tool, argv, settings = _build_args(request, db_path, songs, osu_db)
+    if ref:
+        settings["ref"] = ref
+    return tool, argv, settings
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    """git on ``repo``'s object store, read-only: the measurement service may
+    not write its checkout (ProtectSystem) and never reaches the network."""
+    return subprocess.run(["git", "-c", f"safe.directory={repo}", "--git-dir", str(repo / ".git"),
+                           *args], capture_output=True)
+
+
+def checkout_ref(ref: str, into: Path, repo: Path = ROOT, build=None) -> dict:
+    """The branch ``origin/<ref>``, as the updater last fetched it, extracted
+    into ``into/<commit>``: ``{"dir", "commit", "cli"}``.
+
+    Nothing is fetched here (the server makes no outbound calls; the updater,
+    which already talks to GitHub, fetches every branch). Git LFS files come
+    out of ``git archive`` as pointers and are taken from the server's own
+    checkout. When the branch changes the Rust core, ``overtone-cli`` is built
+    from it, offline (``build`` replaces that build in tests)."""
+    if not _REF.fullmatch(ref) or ".." in ref:
+        raise ValueError(f"{ref!r} is not a branch name.")
+    found = _git(repo, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{ref}^{{commit}}")
+    if found.returncode != 0:
+        raise ValueError(f"No branch {ref!r} fetched on this server yet: the updater fetches "
+                         "every branch every five minutes.")
+    commit = found.stdout.decode().strip()
+    target = into / commit
+    if not (target / ".complete").is_file():
+        import io
+        import shutil
+        import tarfile
+        shutil.rmtree(target, ignore_errors=True)
+        target.mkdir(parents=True)
+        archive = _git(repo, "archive", "--format=tar", commit)
+        if archive.returncode != 0:
+            raise RuntimeError(f"git archive {commit[:12]} failed: "
+                               f"{archive.stderr.decode(errors='replace')[-300:]}")
+        with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
+            tar.extractall(target, filter="data")
+        for path in target.rglob("*"):
+            if path.is_file() and path.stat().st_size < 1024 and path.read_bytes().startswith(_LFS_POINTER):
+                own = repo / path.relative_to(target)
+                if own.is_file() and not own.read_bytes()[:64].startswith(_LFS_POINTER):
+                    shutil.copyfile(own, path)
+        (target / ".complete").write_text(commit, encoding="utf-8")
+    cli = repo / "target" / "release" / _CLI_NAME
+    head = git_commit(repo)
+    if head != commit:
+        changed = _git(repo, "diff", "--quiet", head or "HEAD", commit, "--", *_RUST_PATHS)
+        if changed.returncode not in (0, 1):
+            raise RuntimeError(f"git diff failed: {changed.stderr.decode(errors='replace')[-300:]}")
+        if changed.returncode == 1:
+            cli = target / _CLI_NAME
+            if not cli.is_file():
+                built = (build or _build_cli)(target, into / "target")
+                import shutil
+                shutil.copyfile(built, cli)
+                cli.chmod(0o755)
+    _prune_branches(into, keep=commit)
+    return {"dir": target, "commit": commit, "cli": cli}
+
+
+def _build_cli(source: Path, target_dir: Path) -> Path:
+    """overtone-cli built from ``source``, offline (the crates the server's
+    own builds already downloaded); RuntimeError when it does not build."""
+    import shutil
+    cargo = (os.environ.get("OVERTONE_CARGO") or shutil.which("cargo")
+             or str(Path.home() / ".cargo" / "bin" / "cargo"))
+    env = dict(os.environ, CARGO_TARGET_DIR=str(target_dir))
+    done = subprocess.run([cargo, "build", "--release", "--offline", "--quiet", "-p", "overtone-cli"],
+                          cwd=source, env=env, capture_output=True, text=True)
+    if done.returncode != 0:
+        raise RuntimeError("the branch's overtone-cli did not build offline: "
+                           + (done.stderr or done.stdout)[-400:])
+    return target_dir / "release" / _CLI_NAME
+
+
+def _prune_branches(into: Path, keep: str) -> None:
+    import shutil
+    dirs = sorted((d for d in into.iterdir() if d.is_dir() and d.name != "target"),
+                  key=lambda d: d.stat().st_mtime, reverse=True)
+    for old in dirs[BRANCH_KEEP:]:
+        if old.name != keep:
+            shutil.rmtree(old, ignore_errors=True)
+
+
+def _build_args(request: dict, db_path: str | os.PathLike[str],
+                songs: str | os.PathLike[str] = "",
+                osu_db: str | os.PathLike[str] = "") -> tuple[str, list[str], dict]:
     """A run request as the tool's own command line, or ValueError.
 
     stages: ``{"tool": "stages", "stage": "anime-single", "engine": "rust",
@@ -519,12 +632,19 @@ class RunQueue:
         settings = meta["settings"]
         cache = (self.store.cache / ("vote" if settings.get("beat_vote", False) else "novote")
                  / (settings.get("experiment") or "base"))
-        command = [self.python, str(_HERE / "overtone_runs.py"), "worker",
+        root, script = ROOT, _HERE / "overtone_runs.py"
+        env = dict(os.environ if self.env is None else self.env)
+        if settings.get("ref"):
+            # A branch's own code, extracted from the server's object store.
+            branch = checkout_ref(settings["ref"], self.store.root / "branches")
+            root, script = branch["dir"], branch["dir"] / "python" / "overtone_runs.py"
+            env["OVERTONE_CLI"] = str(branch["cli"])
+            meta.update(commit=branch["commit"], ref=settings["ref"])
+        command = [self.python, str(script), "worker",
                    "--cache", str(cache), "--result", str(folder / "result.json"),
                    *(["--beat-vote"] if settings.get("beat_vote", False) else []),
                    *(["--experiment", settings["experiment"]] if settings.get("experiment") else []),
                    "--", *meta["argv"]]
-        env = dict(os.environ if self.env is None else self.env)
         if self.songs:
             env["OVERTONE_SONGS"] = self.songs     # the bench's Songs folder is the server's
         env["PYTHONUNBUFFERED"] = "1"
@@ -534,7 +654,7 @@ class RunQueue:
         self.store.write(meta)
         started = time.monotonic()
         with open(folder / "log.txt", "w", encoding="utf-8") as log:
-            process = subprocess.Popen(command, cwd=str(ROOT), stdout=log,
+            process = subprocess.Popen(command, cwd=str(root), stdout=log,
                                        stderr=subprocess.STDOUT, env=env,
                                        start_new_session=(os.name != "nt"),
                                        preexec_fn=_first_to_go if os.name != "nt" else None)

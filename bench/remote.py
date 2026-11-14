@@ -168,6 +168,9 @@ def main(argv: list[str] | None = None) -> int:
     suite = commands.add_parser("suite", help="run the Python suite on the server")
     suite.add_argument("which", nargs="?", default="all", choices=("all", "engine"))
     suite.add_argument("--wait", action="store_true")
+    for sub in (run, gates, suite):
+        sub.add_argument("--ref", help="a pushed branch to measure instead of the server's own code "
+                                       "(the server's updater fetches branches every five minutes)")
     for name in ("show", "wait", "stop"):
         commands.add_parser(name).add_argument("id")
     log = commands.add_parser("log", help="a run's whole log")
@@ -206,6 +209,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in ("gates", "suite"):
         request = ({"tool": "gates", "only": args.only} if args.command == "gates"
                    else {"tool": "suite", "suite": args.which})
+        if args.ref:
+            request["ref"] = args.ref
         meta = remote.call("POST", "/api/v1/runs", request)
         print(f"queued {meta['id']} (code {(meta.get('commit') or '?')[:12]})")
         if not args.wait:
@@ -224,6 +229,8 @@ def main(argv: list[str] | None = None) -> int:
                 request["ranked"] = False
         else:
             request.update(sample=args.sample, tv=args.tv)
+        if args.ref:
+            request["ref"] = args.ref
         meta = remote.call("POST", "/api/v1/runs", request)
         print(f"queued {meta['id']} (code {(meta.get('commit') or '?')[:12]})")
         if not args.wait:

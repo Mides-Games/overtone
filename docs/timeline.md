@@ -20,6 +20,34 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-14 · The server measures a branch before it is merged (roadmap 29.8)
+
+### Changed
+
+- A run (a stage, `single_bpm`, the gates or the suite) may name `ref`, a pushed
+  branch: `bench/remote.py run <stage> --ref <branch>`. The updater now also fetches
+  every branch to `origin/*`; the measurement server reads the branch's commit from
+  its own object store with `git archive` (it makes no outbound calls, and its
+  checkout is read-only to it), extracts it to `runs/branches/<commit>/`, takes the
+  Git LFS files (the Beat This! model) from its own checkout, and runs the tool from
+  there. A branch that changes `crates/`, `Cargo.toml` or `Cargo.lock` gets its own
+  `overtone-cli`, built with `cargo build --offline` from the crates the server's
+  builds already hold. The run records the branch and its commit; the three newest
+  branch checkouts are kept.
+
+### Hardening
+
+- The branch name is checked before anything runs (letters, digits, `.`, `_`, `-`,
+  `/`; no option, range or `..`) and looked up only under `refs/remotes/origin/`, so
+  a request cannot name a path, a flag or a commit the updater did not fetch.
+
+### Measured
+
+- Not a measurement change. Verification: unittest 706 pass (10 skipped); the
+  updater's own tests 7/7 with `sh` on the path; facts and parity pass.
+
+---
+
 ## Unreleased — 2026-11-14 · Which sound a span's phase follows: no source holds it (roadmap 29.9 closed)
 
 No engine change. Step 3 of docs/20-learned-timing.md, before any model: on the
