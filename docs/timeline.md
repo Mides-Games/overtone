@@ -20,6 +20,35 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-14 · The tempo judge end to end changes nothing now (roadmap 29.7)
+
+No engine change. The server's six stage runs with `--experiment tempo-judge` (master
+f12d26d, whose engine is 8d1ac38's: fingerprint 1c08b68d5395c8f7, app engine, ranked
+maps) against the same code's runs without it.
+
+### Measured
+
+| stage | split | maps | maps whose lines the judge moved | songs rankable, without → with | run time, without → with |
+|---|---|---|---|---|---|
+| anime-single | dev | 2 830 | 0 | 84.2 → 84.2 % | 121 → 4 003 s |
+| anime-single | held out | 1 289 | 0 | 80.5 → 80.5 % | 53 → 1 914 s |
+| anime-variable | dev | 1 641 | 0 | 25.3 → 25.3 % | 96 → 3 552 s |
+| anime-variable | held out | 654 | 0 | 27.1 → 27.1 % | 38 → 1 450 s |
+| bands-variable | dev | 690 | 0 | 50.0 → 50.0 % | 56 → 1 693 s |
+| bands-variable | held out | 218 | 0 | 53.7 → 53.7 % | 19 → 534 s |
+
+The 2026-11-08 gain (bands held out 41.5 → 43.9 %, on 6118909) came before the song
+tempo rules of 29.11 (`SONG_TRIPLET_BEAT_THIS`, `SONG_DOUBLE_BEAT_THIS`), which now
+make the same corrections from the Beat This! beats the run already has; the judge
+re-reads the audio for none of them.
+
+### Rejected / tried and dropped
+
+- **`TEMPO_JUDGE` on by default** (29.7): no line moved on any of the 7 322 maps,
+  at 28-38 times the run time. It stays off.
+
+---
+
 ## Unreleased — 2026-11-14 · What Beat This! in Rust could save (roadmap 29.10)
 
 No engine change. Before porting, Beat This!'s call was split by stage on this
