@@ -43,6 +43,11 @@ last three are a model's to win.
 nothing a learned model can recover that justifies the work. Write it down and close
 29.9.
 
+**Result (2026-11-14, timeline)**: passes on anime-variable (55 held-out songs: 40
+span, 15 octave), short on anime-single (8; 23 of its 39 misses are the map's offset)
+and bands (8, plus 7 refused). Steps 2-5 target anime-variable and read the other
+two stages for losses only.
+
 ### 2. A training set that does not leak (server, about two days)
 
 - Source: ranked and loved maps in the server's Songs folder, **minus** every audio,
